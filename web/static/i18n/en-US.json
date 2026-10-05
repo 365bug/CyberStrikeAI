@@ -3778,6 +3778,7 @@
     "processLibrary": "Workflows",
     "nodeLibrary": "Node library",
     "emptyList": "No workflows yet",
+    "statusInvalid": "Invalid workflow",
     "statusEnabled": "Enabled",
     "statusDisabled": "Disabled",
     "metaId": "ID",

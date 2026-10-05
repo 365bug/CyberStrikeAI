@@ -39375,6 +39375,12 @@ html[data-theme="dark"] .form-group select {
     background: var(--bg-secondary);
 }
 
+.workflow-status-toggle.is-invalid {
+    color: var(--error-color, #dc3545);
+    border-color: currentColor;
+    background: var(--bg-secondary);
+}
+
 .workflow-status-toggle:hover {
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
 }

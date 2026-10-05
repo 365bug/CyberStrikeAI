@@ -350,6 +350,10 @@
             }
         });
         cy.on('add remove', updateEmptyState);
+        cy.on('add remove data', () => {
+            updateWorkflowCanvasTitle();
+            renderWorkflowList();
+        });
         document.addEventListener('keydown', event => {
             const active = document.activeElement;
             const editing = active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
@@ -778,6 +782,19 @@
         };
     }
 
+    function workflowValidationError(wf) {
+        if (cy && wf && wf.id === currentWorkflowId) {
+            const errors = validateWorkflowGraph(elementsToGraph());
+            if (errors.length) return errors.join('；');
+        }
+        return wf && wf.validation_error || '';
+    }
+
+    function workflowStatusKey(wf, enabled) {
+        return workflowValidationError(wf) ? 'workflows.statusInvalid'
+            : (enabled ? 'workflows.statusEnabled' : 'workflows.statusDisabled');
+    }
+
     function updateWorkflowCanvasTitle() {
         const titleEl = document.getElementById('workflow-canvas-title');
         const subtitleEl = document.getElementById('workflow-canvas-subtitle');
@@ -795,7 +812,7 @@
             const parts = [];
             if (meta.id) parts.push(meta.id);
             if (wf && wf.version) parts.push(`v${wf.version}`);
-            parts.push(meta.enabled ? _t('workflows.statusEnabled') : _t('workflows.statusDisabled'));
+            parts.push(_t(workflowStatusKey(wf || {id: currentWorkflowId}, meta.enabled)));
             subtitleEl.textContent = parts.join(' · ');
             subtitleEl.hidden = !parts.length;
         }
@@ -848,10 +865,11 @@
         list.innerHTML = workflows.map(wf => {
             const encodedId = encodeURIComponent(wf.id);
             const isActive = wf.id === currentWorkflowId;
-            const toggleTitle = esc(_t('workflows.toggleEnabled'));
+            const validationError = workflowValidationError(wf);
+            const toggleTitle = esc(validationError || _t('workflows.toggleEnabled'));
             const editTitle = esc(_t('workflows.editMeta'));
             const enabled = wf.enabled !== false;
-            const statusText = esc(_t(enabled ? 'workflows.statusEnabled' : 'workflows.statusDisabled'));
+            const statusText = esc(_t(workflowStatusKey(wf, enabled)));
             return `
                 <div class="workflow-list-item ${isActive ? 'is-active' : ''}">
                     <button type="button" class="workflow-list-main" onclick="selectWorkflow(decodeURIComponent('${encodedId}'))">
@@ -859,7 +877,7 @@
                         <span class="workflow-list-meta">${esc(wf.id)} · v${wf.version || 1}</span>
                     </button>
                     <div class="workflow-list-actions">
-                        <button type="button" class="workflow-status-toggle ${enabled ? 'is-enabled' : 'is-disabled'}" title="${toggleTitle}" aria-label="${toggleTitle}" aria-pressed="${enabled ? 'true' : 'false'}" onclick="event.stopPropagation(); toggleWorkflowEnabled(decodeURIComponent('${encodedId}'), ${enabled ? 'false' : 'true'})">
+                        <button type="button" class="workflow-status-toggle ${validationError ? 'is-invalid' : (enabled ? 'is-enabled' : 'is-disabled')}" title="${toggleTitle}" aria-label="${toggleTitle}" aria-pressed="${enabled ? 'true' : 'false'}" onclick="event.stopPropagation(); toggleWorkflowEnabled(decodeURIComponent('${encodedId}'), ${enabled ? 'false' : 'true'})">
                             <span class="workflow-status-dot" aria-hidden="true"></span>
                             <span>${statusText}</span>
                         </button>

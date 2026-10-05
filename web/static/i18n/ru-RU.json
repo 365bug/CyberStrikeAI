@@ -3790,6 +3790,7 @@
     "processLibrary": "Сценарии",
     "nodeLibrary": "Библиотека узлов",
     "emptyList": "Сценариев пока нет",
+    "statusInvalid": "Ошибка проверки",
     "statusEnabled": "Включён",
     "statusDisabled": "Выключен",
     "metaId": "ID",

@@ -3766,6 +3766,7 @@
     "processLibrary": "工作流列表",
     "nodeLibrary": "节点库",
     "emptyList": "暂无工作流",
+    "statusInvalid": "校验未通过",
     "statusEnabled": "启用",
     "statusDisabled": "禁用",
     "metaId": "ID",

@@ -1271,6 +1271,11 @@
     "parseModalApplyRun": "Fill and query"
   },
   "assets": {
+    "countryExample": "China",
+    "provinceExample": "Beijing",
+    "cityExample": "Beijing",
+    "exportIP": "IP address",
+    "exportVulnerabilityCount": "Vulnerability count",
     "overviewTitle": "Asset Overview",
     "libraryTitle": "Asset Library",
     "viewLibrary": "View asset library",

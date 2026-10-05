@@ -1259,6 +1259,11 @@
     "parseModalApplyRun": "填入并查询"
   },
   "assets": {
+    "countryExample": "中国",
+    "provinceExample": "北京",
+    "cityExample": "北京",
+    "exportIP": "IP 地址",
+    "exportVulnerabilityCount": "漏洞数量",
     "overviewTitle": "资产概览",
     "libraryTitle": "资产库",
     "viewLibrary": "查看资产库",

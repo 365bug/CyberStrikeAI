@@ -1283,6 +1283,11 @@
     "parseModalApplyRun": "Подставить и выполнить"
   },
   "assets": {
+    "countryExample": "Китай",
+    "provinceExample": "Пекин",
+    "cityExample": "Пекин",
+    "exportIP": "IP-адрес",
+    "exportVulnerabilityCount": "Количество уязвимостей",
     "overviewTitle": "Обзор активов",
     "libraryTitle": "Библиотека активов",
     "viewLibrary": "Открыть библиотеку активов",

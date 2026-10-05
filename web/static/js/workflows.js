@@ -266,7 +266,9 @@
                     style: {
                         'shape': 'round-rectangle',
                         'width': 150,
-                        'height': 52,
+                        'height': 'label',
+                        'min-height': 32,
+                        'padding': 10,
                         'background-color': '#1d4ed8',
                         'border-width': 1,
                         'border-color': '#60a5fa',
@@ -277,13 +279,14 @@
                         'text-valign': 'center',
                         'text-halign': 'center',
                         'text-wrap': 'wrap',
+                        'text-overflow-wrap': 'anywhere',
                         'text-max-width': 132
                     }
                 },
                 { selector: 'node[type="start"]', style: { 'background-color': '#047857', 'border-color': '#34d399' } },
                 { selector: 'node[type="tool"]', style: { 'background-color': '#1d4ed8', 'border-color': '#60a5fa' } },
                 { selector: 'node[type="agent"]', style: { 'background-color': '#7c3aed', 'border-color': '#c4b5fd' } },
-                { selector: 'node[type="condition"]', style: { 'shape': 'diamond', 'background-color': '#b45309', 'border-color': '#fbbf24', 'width': 118, 'height': 86 } },
+                { selector: 'node[type="condition"]', style: { 'shape': 'diamond', 'background-color': '#b45309', 'border-color': '#fbbf24', 'width': 150, 'height': 86, 'padding': 0, 'text-wrap': 'ellipsis', 'text-max-width': 110 } },
                 { selector: 'node[type="hitl"]', style: { 'background-color': '#0f766e', 'border-color': '#5eead4' } },
                 { selector: 'node[type="output"]', style: { 'background-color': '#4338ca', 'border-color': '#a5b4fc' } },
                 { selector: 'node[type="end"]', style: { 'background-color': '#be123c', 'border-color': '#fb7185' } },

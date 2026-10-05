@@ -812,7 +812,7 @@ function renderAssetRows() {
             <td class="asset-check-cell"><input type="checkbox" class="theme-checkbox" ${assetPageState.selected.has(asset.id) ? 'checked' : ''} onchange="toggleAssetSelection(${index},this.checked)" aria-label="${escapeHtml(assetT('assets.selectAsset', '选择资产'))}"></td>
             <td><button class="asset-target-link" title="${escapeHtml(targetHint)}" onclick="openAssetDetail(${index})">${escapeHtml(assetTargetLabel(asset))}</button></td>
             <td><span class="asset-service" title="${escapeHtml(service)}">${escapeHtml(service)}</span></td>
-            <td>${asset.project_name ? `<span class="asset-project-badge">${escapeHtml(asset.project_name)}</span>` : '<span class="muted">-</span>'}</td>
+            <td>${asset.project_name ? `<span class="asset-project-badge" title="${escapeHtml(asset.project_name)}">${escapeHtml(asset.project_name)}</span>` : '<span class="muted">-</span>'}</td>
             <td>${assetOwnershipMarkup(asset)}</td>
             <td>${escapeHtml(lastScan)}</td><td>${vulnerabilityCount > 0 ? `<button class="asset-vulnerability-link" onclick="openAssetVulnerabilities(${index})">${vulnerabilityCount}</button>` : '<span class="muted">0</span>'}</td>
             <td><span class="asset-risk asset-risk--${risk.level}">${escapeHtml(risk.label)}</span></td>

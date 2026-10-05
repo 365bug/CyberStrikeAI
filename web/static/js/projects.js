@@ -1518,7 +1518,7 @@ async function loadProjectFacts() {
         const keyEsc = escapeHtml(f.fact_key);
         const idEsc = escapeHtml(f.id);
         const vulnLink = f.related_vulnerability_id
-            ? `<span class="projects-fact-vuln-link" title="${escapeHtml(tp('projects.relatedVulnIdTitle'))}">${escapeHtml(f.related_vulnerability_id.slice(0, 8))}…</span>`
+            ? `<span class="projects-fact-vuln-link" title="${escapeHtml(tp('projects.relatedVulnIdTitle') + ': ' + f.related_vulnerability_id)}">${escapeHtml(tp('projects.relatedVulnIdTitle'))}: ${escapeHtml(f.related_vulnerability_id.slice(0, 8))}…</span>`
             : '';
         const pinBadge = f.pinned
             ? `<span class="projects-list-item-badge" title="${escapeHtml(tp('projects.pinned'))}">${escapeHtml(tp('projects.pinned'))}</span>`
@@ -1529,7 +1529,7 @@ async function loadProjectFacts() {
                 ? `<span class="projects-fact-link-badge" title="${escapeHtml(tp('projects.linkCountsTitle'))}">↑${lc.outgoing || 0} ↓${lc.incoming || 0}</span>`
                 : '<span class="projects-fact-link-badge projects-fact-link-badge--empty">—</span>';
         return `<tr>
-            <td class="cell-fact-key"><code class="projects-fact-key-chip" title="${keyEsc}">${keyEsc}</code>${pinBadge}${vulnLink}</td>
+            <td class="cell-fact-key"><code class="projects-fact-key-chip" title="${keyEsc}">${keyEsc}</code>${pinBadge || vulnLink ? `<div class="projects-fact-meta">${pinBadge}${vulnLink}</div>` : ''}</td>
             <td class="cell-fact-category">${formatCategoryBadge(f.category)}</td>
             <td class="cell-summary" title="${escapeHtml(f.summary)}">${escapeHtml(f.summary)}</td>
             <td class="cell-fact-links">${linkBadge}</td>

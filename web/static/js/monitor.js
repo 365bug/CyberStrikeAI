@@ -4206,7 +4206,9 @@ function handleStreamEvent(event, progressElement, progressId,
                 updateProgressConversation(progressId, event.data.conversationId);
             }
             if (progressTaskState.has(progressId)) {
-                finalizeProgressTask(progressId, typeof window.t === 'function' ? window.t('tasks.statusCompleted') : '已完成');
+                const outcome = progressDoneOutcome(event.data);
+                const labelKey = outcome.icon === '✅' ? 'tasks.statusCompleted' : outcome.key;
+                finalizeProgressTask(progressId, typeof window.t === 'function' ? window.t(labelKey) : outcome.fallback);
             }
             
             // 检查时间线中是否有错误项

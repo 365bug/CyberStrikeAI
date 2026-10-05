@@ -119,3 +119,8 @@
 - Excel 第 24 行：AgentTaskManager 原先允许取消之后的 UpdateTaskStatus/FinishTaskRun 覆盖终态。明确用户取消增加单向取消标记，晚到的 running/completed/failed 更新及 completed 收尾仍保存 cancelled；“中断并继续”不设置该标记。
 - 主 SSE 收尾从实际已保存任务取 status，保留原消息字段且不修改调用方对象；前端 done 不再一律覆盖为成功标题，取消/失败/超时/清理异常使用实际结果，取消时遗留工具调用标记取消。任务 eventBus 本来已有真实 status，保持不变。
 - 新增取消晚到更新、正常继续、done 实际状态与前端展示回归；完整 handler 包测试通过。Excel 第 60 行仍需审批等待中断的完整路径验证，暂不声明该历史场景全部完成。
+
+## 追加：审批等待取消的闭环验证
+
+- Excel 第 60 行：真实数据库中创建会话/助手消息，启用人工审批，实际 waitHITLApproval 发出 pending 后通过 AgentTaskManager 取消；验证等待返回 context.Canceled、审批记录 cancelled、任务从活跃列表移除、历史与 done 均 cancelled。测试不调用真实模型或扫描目标，因此证明审批/任务收尾路径，不能重建截图中的远端模型过程。
+- done 分支的进度控制按钮也按终态显示，不再再次写“已完成”。真实分支执行验证取消、失败和成功标题、控制文案与遗留工具状态；保留已收到工具终态的结果。

@@ -1244,7 +1244,8 @@ function probeWebshellConnection(conn) {
             encoding: webshellConnEncoding(conn),
             os: webshellConnOS(conn),
             connection_id: conn.id || '',
-            command: buildWebshellProbeCommand(probeToken)
+            command: buildWebshellProbeCommand(probeToken),
+            connection_id: password === '********' ? (document.getElementById('webshell-edit-id')?.value || '') : ''
         })
     })
         .then(function (r) { return r.json(); })

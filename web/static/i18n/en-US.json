@@ -3495,6 +3495,7 @@
     "newFilePathInvalid": "Invalid path (no .. or absolute paths)",
     "noPackageFiles": "No files listed",
     "unsavedSwitch": "You have unsaved changes. Switch file anyway?",
+    "saveDescriptionFirst": "Save the description in SKILL.md before switching to another file",
     "contentLabel": "Content",
     "contentPlaceholder": "Edit the selected file…",
     "contentPlaceholderAdd": "SKILL.md body only (front matter is generated)…",

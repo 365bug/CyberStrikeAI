@@ -3508,6 +3508,7 @@
     "newFilePathInvalid": "Недопустимый путь (без .. и абсолютных путей)",
     "noPackageFiles": "Файлы не указаны",
     "unsavedSwitch": "Есть несохранённые изменения. Всё равно переключить файл?",
+    "saveDescriptionFirst": "Сохраните описание в SKILL.md перед переходом к другому файлу",
     "contentLabel": "Содержимое",
     "contentPlaceholder": "Измените выбранный файл…",
     "contentPlaceholderAdd": "Только тело SKILL.md (front matter создаётся автоматически)…",

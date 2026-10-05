@@ -650,6 +650,30 @@ func (m *Manager) CancelTask(taskID string) error {
 // PopTasksForBeacon beacon check_in 后调用：取该会话所有 queued+approved 的任务，
 // 内部已置为 sent；返回 TaskEnvelope，便于 listener 直接编码下发。
 func (m *Manager) PopTasksForBeacon(sessionID string, limit int) ([]TaskEnvelope, error) {
+	session, err := m.db.GetC2Session(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session != nil {
+		listener, err := m.db.GetC2Listener(session.ListenerID)
+		if err != nil {
+			return nil, err
+		}
+		if listener != nil && listener.Type == string(ListenerTypeTCPReverse) {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			for _, status := range []string{string(TaskSent), string(TaskRunning)} {
+				count, err := m.db.CountC2Tasks(database.ListC2TasksFilter{SessionID: sessionID, Status: status})
+				if err != nil {
+					return nil, err
+				}
+				if count > 0 {
+					return []TaskEnvelope{}, nil
+				}
+			}
+			limit = 1
+		}
+	}
 	tasks, err := m.db.PopQueuedC2Tasks(sessionID, limit)
 	if err != nil {
 		return nil, err

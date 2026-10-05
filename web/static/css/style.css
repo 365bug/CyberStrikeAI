@@ -24847,10 +24847,9 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 }
 
 .dashboard-recent-fact-project {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
     width: 72px;
+    max-width: 100%;
     box-sizing: border-box;
     padding: 3px 6px;
     border-radius: 6px;
@@ -44535,6 +44534,7 @@ html[data-theme="dark"] .project-folders-load-more-count {
     color: inherit;
     font: inherit;
     cursor: pointer;
+    text-align: left;
 }
 
 .recent-conversations-toggle:hover {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -748,11 +749,15 @@ func (h *C2Handler) PayloadOneliner(c *gin.Context) {
 		return
 	}
 
+	scheme := "http"
+	if listener.Type == "https_beacon" {
+		scheme = "https"
+	}
 	input := c2.OnelinerInput{
 		Kind:         kind,
 		Host:         host,
 		Port:         listener.BindPort,
-		HTTPBaseURL:  fmt.Sprintf("http://%s:%d", host, listener.BindPort),
+		HTTPBaseURL:  fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(host, strconv.Itoa(listener.BindPort))),
 		ImplantToken: listener.ImplantToken,
 	}
 

@@ -106,8 +106,8 @@ func ValidateOnelinerForListener(listener *database.C2Listener, kind OnelinerKin
 //   - 同时返回执行示例，便于 AI 在对话里直接展示给操作员。
 func GenerateOneliner(in OnelinerInput) (string, error) {
 	host := strings.TrimSpace(in.Host)
-	if host == "" {
-		return "", fmt.Errorf("host is required")
+	if err := ValidateBeaconDialHost(host); err != nil {
+		return "", err
 	}
 	switch in.Kind {
 	case OnelinerBash:

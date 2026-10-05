@@ -359,6 +359,9 @@ func (m *Manager) IngestCheckIn(listenerID string, req ImplantCheckInRequest) (*
 	if err != nil {
 		return nil, err
 	}
+	if existing != nil && existing.ListenerID != listenerID {
+		return nil, ErrAuthFailed
+	}
 	now := time.Now()
 	isFirstSeen := existing == nil
 	var sessID string
@@ -659,6 +662,30 @@ func (m *Manager) PopTasksForBeacon(sessionID string, limit int) ([]TaskEnvelope
 }
 
 // IngestTaskResult beacon 回传任务结果的统一入口
+// IngestTaskResultFromListener verifies transport-established ownership before
+// accepting a result. HTTP transports authenticate the listener; persistent
+// connections additionally bind the result to the session established at check-in.
+func (m *Manager) IngestTaskResultFromListener(listenerID, sessionID string, report TaskResultReport) error {
+	if listenerID == "" {
+		return ErrAuthFailed
+	}
+	task, err := m.db.GetC2Task(report.TaskID)
+	if err != nil {
+		return err
+	}
+	if task == nil {
+		return ErrTaskNotFound
+	}
+	session, err := m.db.GetC2Session(task.SessionID)
+	if err != nil {
+		return err
+	}
+	if session == nil || session.ListenerID != listenerID || (sessionID != "" && session.ID != sessionID) {
+		return ErrAuthFailed
+	}
+	return m.IngestTaskResult(report)
+}
+
 func (m *Manager) IngestTaskResult(report TaskResultReport) error {
 	if strings.TrimSpace(report.TaskID) == "" {
 		return ErrInvalidInput

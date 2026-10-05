@@ -214,7 +214,7 @@ func (l *WebSocketListener) handleConn(ws *websocket.Conn) {
 		case "result":
 			var report TaskResultReport
 			if err := json.Unmarshal(body, &report); err == nil {
-				_ = l.manager.IngestTaskResult(report)
+				_ = l.manager.IngestTaskResultFromListener(l.rec.ID, conn.sessionID, report)
 			}
 		case "checkin":
 			// 心跳更新：beacon 周期性送上心跳

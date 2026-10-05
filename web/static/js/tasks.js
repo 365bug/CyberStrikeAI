@@ -2733,7 +2733,13 @@ async function saveInlineConcurrency() {
     const queueId = batchQueuesState.currentQueueId;
     if (!queueId) { _bqInlineSaving = false; return; }
     const inp = document.getElementById('bq-edit-concurrency');
-    const concurrency = normalizeBatchQueueConcurrencyInput(inp ? inp.value : 1);
+    const concurrency = inp && inp.value.trim() !== '' ? Number(inp.value) : NaN;
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) {
+        _bqInlineSaving = false;
+        alert(_t('tasks.concurrencyInvalid'));
+        if (inp) inp.focus();
+        return;
+    }
     try {
         const detailResp = await apiFetch(`/api/batch-tasks/${queueId}`);
         const detail = await detailResp.json();

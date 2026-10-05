@@ -5185,8 +5185,8 @@
                                     </div>
                                     <div class="page-header-actions">
                                         <button class="btn-secondary" type="button" onclick="refreshPlatformRbac(this)" data-i18n="common.refresh">刷新</button>
-                                        <button class="btn-secondary" type="button" onclick="openRbacRoleModal()" data-i18n="rbac.createRole">新建角色</button>
-                                        <button class="btn-primary" type="button" onclick="openRbacUserModal()" data-i18n="rbac.createUser">添加成员</button>
+                                        <button class="btn-secondary" type="button" onclick="openRbacRoleModal()" data-require-permission="rbac:write" data-i18n="rbac.createRole">新建角色</button>
+                                        <button class="btn-primary" type="button" onclick="openRbacUserModal()" data-require-permission="rbac:write" data-i18n="rbac.createUser">添加成员</button>
                                     </div>
                                 </div>
                                 <div class="page-content">
@@ -5411,7 +5411,7 @@
                                                     <label for="rbac-role-search" data-i18n="rbac.filterRoles">筛选角色</label>
                                                     <input id="rbac-role-search" class="form-input" type="search" placeholder="搜索角色或权限" data-i18n="rbac.searchRoles" data-i18n-attr="placeholder" oninput="setRbacRoleSearch(this.value)">
                                                 </div>
-                                                <button class="btn-primary btn-small" type="button" onclick="openRbacRoleModal()" data-i18n="rbac.createRole">新建角色</button>
+                                                <button class="btn-primary btn-small" type="button" onclick="openRbacRoleModal()" data-require-permission="rbac:write" data-i18n="rbac.createRole">新建角色</button>
                                             </div>
                                         </div>
                                         <div id="rbac-role-catalog" class="rbac-role-catalog"></div>

@@ -254,7 +254,7 @@ func (l *HTTPBeaconListener) handleTasks(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	session, err := l.manager.DB().GetC2Session(sessionID)
-	if err != nil || session == nil {
+	if err != nil || session == nil || session.ListenerID != l.rec.ID {
 		l.disguisedReject(w)
 		return
 	}
@@ -299,7 +299,7 @@ func (l *HTTPBeaconListener) handleResult(w http.ResponseWriter, r *http.Request
 		l.disguisedReject(w)
 		return
 	}
-	if err := l.manager.IngestTaskResult(report); err != nil {
+	if err := l.manager.IngestTaskResultFromListener(l.rec.ID, "", report); err != nil {
 		http.Error(w, "ingest result failed", http.StatusInternalServerError)
 		return
 	}

@@ -3607,6 +3607,7 @@
     "completedAt": "完成时间",
     "taskTotal": "任务总数",
     "concurrency": "并发数",
+    "concurrencyInvalid": "并发数必须为 1–8",
     "concurrencyEditHint": "点击可修改；队列运行中不可改。",
     "taskList": "任务列表",
     "startLabel": "开始",

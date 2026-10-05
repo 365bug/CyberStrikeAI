@@ -3619,6 +3619,7 @@
     "completedAt": "Completed at",
     "taskTotal": "Total tasks",
     "concurrency": "Concurrency",
+    "concurrencyInvalid": "Concurrency must be an integer from 1 to 8",
     "concurrencyEditHint": "Click to edit. Cannot change while the queue is running.",
     "taskList": "Task list",
     "startLabel": "Start",

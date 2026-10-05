@@ -2099,6 +2099,8 @@ function insertProjectScopeExample() {
 
 async function saveProjectSettings() {
     if (!currentProjectId || !requireProjectWrite()) return;
+    const name = document.getElementById('project-edit-name').value.trim();
+    if (!name) return alert(tp('projects.enterProjectName'));
     const scopeRaw = document.getElementById('project-edit-scope').value.trim();
     if (scopeRaw) {
         try {
@@ -2109,7 +2111,7 @@ async function saveProjectSettings() {
         }
     }
     const body = {
-        name: document.getElementById('project-edit-name').value.trim(),
+        name,
         description: clampProjectDescription(document.getElementById('project-edit-description').value),
         scope_json: scopeRaw,
         status: document.getElementById('project-edit-status')?.value || 'active',

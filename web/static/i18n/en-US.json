@@ -341,6 +341,7 @@
     "graphLegendExploits": "exploits",
     "graphLegendTentative": "Tentative (dashed)",
     "factLinksLabel": "Links (from → this fact)",
+    "factBodyRelationsHint": "Enter relationships such as discovered_on in the Links field below to create graph edges.",
     "factLinksPlaceholder": "discovered_on: target/primary_domain\nexploits: exploit/upload-rce",
     "factLinksHint": "One per line: type: source_fact_key (source → this fact). Common types: discovered_on, depends_on, leads_to, enables, exploits. Saving replaces all links.",
     "factIncomingLinksLabel": "Incoming links (read-only)",

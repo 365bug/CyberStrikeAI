@@ -353,6 +353,7 @@
     "graphLegendExploits": "exploits",
     "graphLegendTentative": "Предварительно (пунктир)",
     "factLinksLabel": "Связи (откуда → этот факт)",
+    "factBodyRelationsHint": "Укажите отношения, например discovered_on, в поле связей ниже, чтобы создать рёбра графа.",
     "factLinksPlaceholder": "discovered_on: target/primary_domain\nexploits: exploit/upload-rce",
     "factLinksHint": "По одной строке: тип: source_fact_key (источник → этот факт). Частые типы: discovered_on, depends_on, leads_to, enables, exploits. При сохранении все связи заменяются.",
     "factIncomingLinksLabel": "Входящие связи (только чтение)",

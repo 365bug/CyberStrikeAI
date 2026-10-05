@@ -329,6 +329,7 @@
     "graphLegendExploits": "exploits",
     "graphLegendTentative": "待确认（虚线）",
     "factLinksLabel": "关系边（from → 本事实）",
+    "factBodyRelationsHint": "正文中的 discovered_on 等关系请填写到下方“关系边”字段，才能生成图谱连线。",
     "factLinksPlaceholder": "discovered_on: target/primary_domain\nexploits: exploit/upload-rce",
     "factLinksHint": "每行一条：type: source_fact_key（来源 → 当前事实）。常用 type：discovered_on、depends_on、leads_to、enables、exploits。保存时替换全部关系边。",
     "factIncomingLinksLabel": "入边（只读）",

@@ -1953,6 +1953,7 @@
     "forbidden": "权限不足",
     "requestFailed": "请求失败",
     "enterPassword": "请输入密码",
+    "usernameRequired": "用户名不能为空，且不能超过 64 个字符",
     "loginFailedCheck": "登录失败，请检查用户名或密码",
     "loginFailedRetry": "登录失败，请稍后重试",
     "loggedOut": "已退出登录"

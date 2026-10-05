@@ -243,6 +243,14 @@ func (h *WorkflowHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "工作流 id 不能为空"})
 		return
 	}
+	if h.cfg != nil {
+		for _, role := range h.cfg.Roles {
+			if role.WorkflowID == id {
+				c.JSON(http.StatusConflict, gin.H{"error": "工作流仍被角色引用，请先解除绑定"})
+				return
+			}
+		}
+	}
 	if err := h.db.DeleteWorkflowDefinition(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

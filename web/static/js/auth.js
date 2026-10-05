@@ -257,6 +257,14 @@ async function submitLogin(event) {
 
     const username = usernameInput ? usernameInput.value.trim() : '';
     const password = passwordInput.value.trim();
+    if (!username || Array.from(username).length > 64) {
+        if (errorBox) {
+            errorBox.textContent = typeof window.t === 'function' ? window.t('auth.usernameRequired') : '用户名不能为空，且不能超过 64 个字符';
+            errorBox.style.display = 'block';
+        }
+        if (usernameInput) usernameInput.focus();
+        return;
+    }
     if (!password) {
         if (errorBox) {
             const msgEmpty = (typeof window !== 'undefined' && typeof window.t === 'function')

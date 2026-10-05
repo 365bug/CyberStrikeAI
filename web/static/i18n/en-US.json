@@ -1965,6 +1965,7 @@
     "forbidden": "Insufficient permissions",
     "requestFailed": "Request failed",
     "enterPassword": "Please enter password",
+    "usernameRequired": "Enter a username of at most 64 characters",
     "loginFailedCheck": "Sign-in failed, please check the username or password",
     "loginFailedRetry": "Sign-in failed, please try again later",
     "loggedOut": "Signed out"

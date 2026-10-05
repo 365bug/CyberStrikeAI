@@ -4144,6 +4144,10 @@
       "failed": "Failed"
     },
     "listeners": {
+      "nameRequired": "Enter a listener name",
+      "typeRequired": "Select a listener type",
+      "portInvalid": "Port must be an integer from 1 to 65535",
+      "saveFailed": "Failed to save listener",
       "title": "Listener Management",
       "create": "Create Listener",
       "name": "Name",

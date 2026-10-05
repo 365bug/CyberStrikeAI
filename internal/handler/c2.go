@@ -177,6 +177,15 @@ func (h *C2Handler) UpdateListener(c *gin.Context) {
 		return
 	}
 
+	if strings.TrimSpace(req.Name) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "listener name is required"})
+		return
+	}
+	if err := c2.SafeBindPort(req.BindPort); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// 若监听器在运行，不能修改关键字段
 	if h.mgr().IsListenerRunning(id) {
 		if req.BindHost != listener.BindHost || req.BindPort != listener.BindPort {

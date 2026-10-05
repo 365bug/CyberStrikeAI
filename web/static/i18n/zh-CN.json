@@ -4132,6 +4132,10 @@
       "failed": "失败"
     },
     "listeners": {
+      "nameRequired": "请输入监听器名称",
+      "typeRequired": "请选择监听器类型",
+      "portInvalid": "端口必须为 1–65535 的整数",
+      "saveFailed": "监听器保存失败",
       "title": "监听器管理",
       "create": "创建监听器",
       "name": "名称",

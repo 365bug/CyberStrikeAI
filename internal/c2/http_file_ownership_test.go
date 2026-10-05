@@ -13,6 +13,8 @@ import (
 
 func TestHTTPUploadEnforcesListenerOwnership(t *testing.T) {
 	manager, db := terminalTestManager(t)
+	secret := strings.Repeat("a", 43)
+	installHTTPIdentityFixture(t, db, "listener", "test-uuid", secret)
 	task := &database.C2Task{ID: "test-only-file-task", SessionID: "session", TaskType: "download", Status: "sent", CreatedAt: time.Now()}
 	if err := db.CreateC2Task(task); err != nil {
 		t.Fatal(err)
@@ -42,6 +44,7 @@ func TestHTTPUploadEnforcesListenerOwnership(t *testing.T) {
 		}
 		upload := httptest.NewRequest(http.MethodPost, "/upload?task_id="+task.ID, strings.NewReader(body))
 		upload.Header.Set("X-Implant-Token", "test-only-token")
+		upload.Header.Set("X-Session-Token", secret)
 		rr := httptest.NewRecorder()
 		listener.handleUpload(rr, upload)
 		expected := http.StatusNotFound

@@ -3975,6 +3975,8 @@
         "continueOverwrite": "Continue to overwrite confirmation",
         "confirmRename": "Confirm save as new ID",
         "confirmCreate": "Confirm create",
+        "confirmSkip": "Confirm skip import",
+        "confirmKeep": "Confirm keep local version",
         "confirmComplete": "Confirm completion"
       },
       "result": {
@@ -3984,6 +3986,8 @@
         "keptExisting": "The local workflow was kept; no changes were made.",
         "skippedIdentical": "The same local content already exists; import was skipped.",
         "complete": "Import completed.",
+        "skippedAction": "Import skipped",
+        "keptAction": "Local version kept",
         "completedAction": "Import completed"
       },
       "exportSelectSaved": "Choose a saved workflow before exporting."

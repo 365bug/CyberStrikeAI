@@ -2719,7 +2719,10 @@
             submit.disabled = !action || renameIncomplete;
             if (action === 'overwrite') submit.textContent = workflowPackageText('workflows.package.resolution.continueOverwrite', '继续确认覆盖');
             else if (action === 'rename') submit.textContent = workflowPackageText('workflows.package.resolution.confirmRename', '确认另存');
-            else submit.textContent = action === 'create' ? workflowPackageText('workflows.package.resolution.confirmCreate', '确认创建') : workflowPackageText('workflows.package.resolution.confirmComplete', '确认完成');
+            else if (action === 'create') submit.textContent = workflowPackageText('workflows.package.resolution.confirmCreate', '确认创建');
+            else submit.textContent = conflictState === 'identical'
+                ? workflowPackageText('workflows.package.resolution.confirmSkip', '确认跳过导入')
+                : workflowPackageText('workflows.package.resolution.confirmKeep', '确认保留本地版本');
         }
         workflowPackageSetStep('import');
     }
@@ -2775,7 +2778,11 @@
         const submit = workflowPackageSubmitBtn();
         if (submit) {
             submit.disabled = true;
-            submit.textContent = workflowPackageText('workflows.package.result.completedAction', '导入已完成');
+            submit.textContent = result === 'skipped_identical'
+                ? workflowPackageText('workflows.package.result.skippedAction', '已跳过导入')
+                : result === 'kept_existing'
+                    ? workflowPackageText('workflows.package.result.keptAction', '已保留本地版本')
+                    : workflowPackageText('workflows.package.result.completedAction', '导入已完成');
         }
     }
 

@@ -3963,6 +3963,8 @@
         "continueOverwrite": "继续确认覆盖",
         "confirmRename": "确认另存",
         "confirmCreate": "确认创建",
+        "confirmSkip": "确认跳过导入",
+        "confirmKeep": "确认保留本地版本",
         "confirmComplete": "确认完成"
       },
       "result": {
@@ -3972,6 +3974,8 @@
         "keptExisting": "已保留本地工作流，未写入任何更改。",
         "skippedIdentical": "本地已存在相同内容，已跳过导入。",
         "complete": "导入已完成。",
+        "skippedAction": "已跳过导入",
+        "keptAction": "已保留本地版本",
         "completedAction": "导入已完成"
       },
       "exportSelectSaved": "请先选择已保存的工作流后再导出。"

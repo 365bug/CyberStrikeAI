@@ -1099,6 +1099,8 @@
     "toolFailed": "Failed"
   },
   "tasks": {
+    "statusEndedWithFailures": "Finished ({{count}} failed)",
+    "finishedProgressHint": "Progress counts finished tasks, including failures and cancellations; it is not the success rate.",
     "title": "Task Management",
     "stopTask": "Stop task",
     "interruptModalTitle": "Interrupt current step",

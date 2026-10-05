@@ -1111,6 +1111,8 @@
     "toolFailed": "Ошибка"
   },
   "tasks": {
+    "statusEndedWithFailures": "Завершено (ошибок: {{count}})",
+    "finishedProgressHint": "Прогресс учитывает завершённые задачи, включая ошибки и отмены, а не долю успешных задач.",
     "title": "Управление задачами",
     "stopTask": "Остановить задачу",
     "interruptModalTitle": "Прервать текущий шаг",

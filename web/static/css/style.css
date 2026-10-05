@@ -46688,3 +46688,9 @@ html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
     font-size: .75rem;
     line-height: 1.6;
 }
+
+.batch-queue-status-failed {
+    color: var(--error-color, #dc2626);
+    background: rgba(220, 38, 38, 0.08);
+    border-color: rgba(220, 38, 38, 0.25);
+}

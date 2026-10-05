@@ -1087,6 +1087,8 @@
     "toolFailed": "失败"
   },
   "tasks": {
+    "statusEndedWithFailures": "已结束（{{count}} 项失败）",
+    "finishedProgressHint": "进度表示已结束的任务比例，包含失败和取消，不表示成功率。",
     "title": "任务管理",
     "stopTask": "停止任务",
     "interruptModalTitle": "中断当前步骤",

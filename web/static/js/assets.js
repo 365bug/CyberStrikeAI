@@ -1131,7 +1131,10 @@ function renderAssetScanPrompt(template, asset) {
     const values = {
         asset_id: asset.id || '', target: assetTargetLabel(asset), host: asset.host || '', ip: asset.ip || '', domain: asset.domain || '', port: asset.port || ''
     };
-    return Object.keys(values).reduce((text, key) => text.replaceAll(`{{${key}}}`, String(values[key])), template);
+    const prompt = Object.keys(values).reduce((text, key) => text.replaceAll(`{{${key}}}`, String(values[key])), template);
+    if (!asset.id || prompt.includes('complete_asset_scan')) return prompt;
+    const completion = assetT('assets.scanCompletionInstruction', '达到上述任务目标后停止探测，如实报告已有结果；调用 complete_asset_scan(id={{asset_id}}) 回写本次资产扫描时间和关联结果。此记录动作不扩大上述探测范围。', { asset_id: String(asset.id) });
+    return `${prompt}\n\n${completion}`;
 }
 
 function commonAssetProjectId(assets) {

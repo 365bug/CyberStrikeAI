@@ -1454,6 +1454,7 @@
     "executeNow": "创建后立即执行",
     "confirmSend": "确认发送",
     "confirmCreate": "创建任务",
+    "scanCompletionInstruction": "达到上述任务目标后停止探测，如实报告已有结果；调用 complete_asset_scan(id={{asset_id}}) 回写本次资产扫描时间和关联结果。此记录动作不扩大上述探测范围。",
     "defaultScanPrompt": "请对资产 {{target}}（资产ID：{{asset_id}}）进行授权安全扫描，优先检查暴露服务、已知漏洞、弱口令和常见 Web 风险；通过 record_vulnerability 保存确认的漏洞，完成后调用 complete_asset_scan(id={{asset_id}}) 回写上次扫描时间和相关漏洞。",
     "selectAssetsFirst": "请先选择资产",
     "promptRequired": "请输入用户提示词",

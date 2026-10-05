@@ -1466,6 +1466,7 @@
     "executeNow": "Run immediately after creation",
     "confirmSend": "Send",
     "confirmCreate": "Create tasks",
+    "scanCompletionInstruction": "Stop probing once the task above is satisfied and report the available evidence. Call complete_asset_scan(id={{asset_id}}) to record this asset scan time and related results. This record update does not expand the requested probing scope.",
     "defaultScanPrompt": "Perform an authorized security scan of {{target}} (asset ID: {{asset_id}}). Save confirmed findings with record_vulnerability, then call complete_asset_scan(id={{asset_id}}) to update the last scan time and related vulnerability count.",
     "selectAssetsFirst": "Select assets first",
     "promptRequired": "Enter a user prompt",

@@ -102,3 +102,9 @@
 
 - Excel 第 53 行：原截图的服务错误明确为 401 Unauthorized/Incorrect API key。页面改为按认证、权限、限流、超时、网络错误给出对应检查建议，保留原错误供定位；未知错误不推断原因。状态 API 不再五分钟后隐藏失败，下一次索引由现有 resetLastError 清除；空知识列表也显示已有失败。实际状态渲染与错误保留回归通过。
 - Excel 第 54 行：当前启动、动态初始化及 ApplyConfig 路径均注册知识检索工具；真实 RegisterKnowledgeTool + Agent.ToolsForRole 验证默认角色和显式允许角色均含搜索/风险列表定义，显式不允许角色不被绕过。截图只有模型回复，缺少当时启用配置、工具目录和角色列表，不能据此证明当前注册缺陷；本项标为当前未复现，保留历史证据不足的限制。
+
+## 追加：nmap 参数拼接
+
+- Excel 第 47 行：截图显示 NSE 将 `-sT` 当作脚本名，原因是 scan_type 根据“最后一个非标志参数”找插入位置，遇到 additional_args 的 --script 值时插入到了标志与值之间。nmap 的 scan_type 改为置于参数列表开头，保留各 flag/value 相邻关系；其他工具的既有插入规则保留。
+- `-sC` 与 --script 不是互斥错误；官方说明明确有 --script 时忽略 -sC，故不新增错误拒绝规则。来源：https://nmap.org/book/man-nse.html 。
+- 读取真实 tools/nmap.yaml 验证截图参数、nse_scripts 字段和尾部 --max-retries 值的完整顺序；既有空可选参数测试通过。测试不向目标发送扫描；本机没有 nmap，因此不声称完成实际扫描验证。

@@ -230,8 +230,11 @@ func TestHTTPBeaconListener_HandleFileServe(t *testing.T) {
 }
 
 func TestHTTPBeaconListener_HandleUploadConfinesTaskID(t *testing.T) {
-	tmp := t.TempDir()
-	store := filepath.Join(tmp, "c2store")
+	m, db := terminalTestManager(t)
+	store := m.StorageDir()
+	if err := db.CreateC2Task(&database.C2Task{ID: "t_safe123", SessionID: "session", TaskType: "download", Status: "sent", CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
 	keyB64, err := GenerateAESKey()
 	if err != nil {
 		t.Fatal(err)
@@ -239,10 +242,11 @@ func TestHTTPBeaconListener_HandleUploadConfinesTaskID(t *testing.T) {
 	token := "test-implant-token-upload"
 	l := &HTTPBeaconListener{
 		rec: &database.C2Listener{
+			ID:            "listener",
 			EncryptionKey: keyB64,
 			ImplantToken:  token,
 		},
-		manager: NewManager(nil, zap.NewNop(), store),
+		manager: m,
 		logger:  zap.NewNop(),
 	}
 

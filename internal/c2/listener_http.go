@@ -324,7 +324,7 @@ func (l *HTTPBeaconListener) handleUpload(w http.ResponseWriter, r *http.Request
 		return
 	}
 	taskID := r.URL.Query().Get("task_id")
-	if taskID == "" {
+	if taskID == "" || !l.ownsTask(taskID) {
 		l.disguisedReject(w)
 		return
 	}
@@ -396,6 +396,15 @@ func (l *HTTPBeaconListener) handleFileServe(w http.ResponseWriter, r *http.Requ
 // ----------------------------------------------------------------------------
 // 鉴权 / 输出辅助
 // ----------------------------------------------------------------------------
+
+func (l *HTTPBeaconListener) ownsTask(taskID string) bool {
+	task, err := l.manager.DB().GetC2Task(taskID)
+	if err != nil || task == nil {
+		return false
+	}
+	session, err := l.manager.DB().GetC2Session(task.SessionID)
+	return err == nil && session != nil && session.ListenerID == l.rec.ID
+}
 
 // checkImplantToken 校验 X-Implant-Token header（恒定时间比较防止时序攻击）
 func (l *HTTPBeaconListener) checkImplantToken(r *http.Request) bool {

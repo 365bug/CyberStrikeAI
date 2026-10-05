@@ -3766,7 +3766,8 @@
     "workflowPolicyAuto": "Auto trigger",
     "workflowPolicyOff": "Off",
     "noWorkflowBind": "No workflow",
-    "workflowDisabledSuffix": " (disabled)"
+    "workflowDisabledSuffix": " (disabled)",
+    "workflowMissing": "missing or unavailable"
   },
   "workflows": {
     "title": "Workflows",
@@ -4485,6 +4486,7 @@
       "hintHeaders": "HTTP response headers to mimic a legitimate server",
       "toastNameRequired": "Profile name is required",
       "toastInvalidHeadersJson": "Invalid JSON in response headers",
+      "toastInvalidJitter": "Jitter must use integers with 0 <= min <= max",
       "toastCreated": "Profile created",
       "toastDeleted": "Profile deleted",
       "confirmDelete": "Delete this profile?",

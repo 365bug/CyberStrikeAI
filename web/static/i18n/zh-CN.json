@@ -3754,7 +3754,8 @@
     "workflowPolicyAuto": "自动触发",
     "workflowPolicyOff": "关闭",
     "noWorkflowBind": "不绑定工作流",
-    "workflowDisabledSuffix": "（已禁用）"
+    "workflowDisabledSuffix": "（已禁用）",
+    "workflowMissing": "不存在或不可用"
   },
   "workflows": {
     "title": "工作流",
@@ -4473,6 +4474,7 @@
       "hintHeaders": "用于伪装为合法服务的 HTTP 响应头",
       "toastNameRequired": "请填写 Profile 名称",
       "toastInvalidHeadersJson": "响应头 JSON 无效",
+      "toastInvalidJitter": "Jitter 必须为整数，且满足 0 <= 最小值 <= 最大值",
       "toastCreated": "Profile 已创建",
       "toastDeleted": "Profile 已删除",
       "confirmDelete": "确定删除此 Profile？",

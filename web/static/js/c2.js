@@ -4514,8 +4514,12 @@
         const userAgent = document.getElementById('c2-profile-ua')?.value.trim() || '';
         const urisRaw = document.getElementById('c2-profile-uris')?.value.trim() || '';
         const uris = urisRaw.split('\n').map(u => u.trim()).filter(u => u);
-        const jitterMinMs = parseInt(document.getElementById('c2-profile-jmin')?.value) || 100;
-        const jitterMaxMs = parseInt(document.getElementById('c2-profile-jmax')?.value) || 500;
+        const jitterMinMs = Number(document.getElementById('c2-profile-jmin')?.value);
+        const jitterMaxMs = Number(document.getElementById('c2-profile-jmax')?.value);
+        if (!Number.isSafeInteger(jitterMinMs) || !Number.isSafeInteger(jitterMaxMs) || jitterMinMs < 0 || jitterMaxMs < jitterMinMs) {
+            showToast(c2t('c2.profiles.toastInvalidJitter'), 'error');
+            return;
+        }
 
         let responseHeaders = {};
         const headersRaw = document.getElementById('c2-profile-headers')?.value.trim();
@@ -4526,11 +4530,11 @@
 
         apiRequest('POST', `${API_BASE}/profiles`, {
             name,
-            user_agent: userAgent,
+            userAgent,
             uris,
-            jitter_min_ms: jitterMinMs,
-            jitter_max_ms: jitterMaxMs,
-            response_headers: responseHeaders
+            jitterMinMs,
+            jitterMaxMs,
+            responseHeaders
         }).then(data => {
             if (data.error) {
                 showToast(data.error, 'error');

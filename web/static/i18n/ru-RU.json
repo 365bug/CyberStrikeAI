@@ -3778,7 +3778,8 @@
     "workflowPolicyAuto": "Автозапуск",
     "workflowPolicyOff": "Выкл.",
     "noWorkflowBind": "Без сценария",
-    "workflowDisabledSuffix": " (отключён)"
+    "workflowDisabledSuffix": " (отключён)",
+    "workflowMissing": "отсутствует или недоступен"
   },
   "workflows": {
     "title": "Сценарии",
@@ -4497,6 +4498,7 @@
       "hintHeaders": "Заголовки ответа HTTP, имитирующие обычный сервер",
       "toastNameRequired": "Укажите имя профиля",
       "toastInvalidHeadersJson": "Некорректный JSON в заголовках ответа",
+      "toastInvalidJitter": "Jitter должен быть целым: 0 <= минимум <= максимум",
       "toastCreated": "Профиль создан",
       "toastDeleted": "Профиль удалён",
       "confirmDelete": "Удалить этот профиль?",

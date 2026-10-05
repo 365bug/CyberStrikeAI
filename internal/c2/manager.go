@@ -637,7 +637,7 @@ func (m *Manager) CancelTask(taskID string) error {
 	}
 	cancelled := string(TaskCancelled)
 	now := time.Now()
-	if err := m.db.UpdateC2Task(taskID, database.C2TaskUpdate{Status: &cancelled, CompletedAt: &now}); err != nil {
+	if err := m.db.UpdateC2Task(taskID, database.C2TaskUpdate{ExpectedStatus: &t.Status, Status: &cancelled, CompletedAt: &now}); err != nil {
 		return err
 	}
 	m.publishEvent("info", "task", t.SessionID, taskID, "任务已取消", nil)
@@ -670,6 +670,9 @@ func (m *Manager) IngestTaskResult(report TaskResultReport) error {
 	if t == nil {
 		return ErrTaskNotFound
 	}
+	if t.Status == string(TaskCancelled) || t.Status == string(TaskSuccess) || t.Status == string(TaskFailed) {
+		return nil
+	}
 
 	startedAt := time.Unix(0, report.StartedAt*int64(time.Millisecond))
 	endedAt := time.Unix(0, report.EndedAt*int64(time.Millisecond))
@@ -694,12 +697,13 @@ func (m *Manager) IngestTaskResult(report TaskResultReport) error {
 	errText := ResolveTaskResultText(report.Error, report.ErrorB64, sessionOS)
 
 	upd := database.C2TaskUpdate{
-		Status:      &status,
-		ResultText:  &resultText,
-		Error:       &errText,
-		StartedAt:   &startedAt,
-		CompletedAt: &endedAt,
-		DurationMS:  &duration,
+		ExpectedStatus: &t.Status,
+		Status:         &status,
+		ResultText:     &resultText,
+		Error:          &errText,
+		StartedAt:      &startedAt,
+		CompletedAt:    &endedAt,
+		DurationMS:     &duration,
 	}
 
 	// blob（如截图）落盘

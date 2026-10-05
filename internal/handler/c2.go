@@ -1021,6 +1021,10 @@ func (h *C2Handler) CreateProfile(c *gin.Context) {
 		return
 	}
 
+	if req.JitterMinMS < 0 || req.JitterMaxMS < req.JitterMinMS {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Jitter 必须满足 0 <= min <= max"})
+		return
+	}
 	req.ID = "p_" + strings.ReplaceAll(uuid.New().String(), "-", "")[:14]
 	req.CreatedAt = time.Now()
 
@@ -1050,6 +1054,10 @@ func (h *C2Handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
+	if req.JitterMinMS < 0 || req.JitterMaxMS < req.JitterMinMS {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Jitter 必须满足 0 <= min <= max"})
+		return
+	}
 	profile.Name = req.Name
 	profile.UserAgent = req.UserAgent
 	profile.URIs = req.URIs

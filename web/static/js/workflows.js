@@ -2481,6 +2481,13 @@
         select.innerHTML = '<option value="">' + esc(_t('roleModal.noWorkflowBind')) + '</option>' + workflows.map(wf => (
             `<option value="${esc(wf.id)}">${esc(wf.name || wf.id)}${wf.enabled ? '' : esc(_t('roleModal.workflowDisabledSuffix'))}</option>`
         )).join('');
+        if (current && !workflows.some(wf => wf.id === current)) {
+            // Keep an invalid binding visible instead of silently clearing it.
+            const option = document.createElement('option');
+            option.value = current;
+            option.textContent = `${current} (${_t('roleModal.workflowMissing')})`;
+            select.appendChild(option);
+        }
         select.value = current || '';
         if (typeof window.refreshRoleModalSelects === 'function') {
             window.refreshRoleModalSelects();

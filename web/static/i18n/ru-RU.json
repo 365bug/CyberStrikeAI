@@ -68,6 +68,8 @@
     "itemDefaultTitle": "Уведомление"
   },
   "login": {
+    "showPassword": "Показать пароль",
+    "hidePassword": "Скрыть пароль",
     "title": "Вход в CyberStrikeAI",
     "titlePrefix": "Вход в",
     "subtitle": "Войдите с учётной записью платформы. Администратор по умолчанию — admin.",
@@ -3355,6 +3357,9 @@
     "detailSession": "Сессия"
   },
   "settingsSecurity": {
+    "currentRequired": "Введите текущий пароль",
+    "newTooShort": "Новый пароль должен содержать не менее 8 символов",
+    "confirmMismatch": "Новые пароли не совпадают",
     "changePasswordTitle": "Сменить пароль",
     "changePasswordDesc": "После смены пароля войдите снова с новым паролем.",
     "currentPassword": "Текущий пароль",

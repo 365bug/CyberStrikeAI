@@ -68,6 +68,8 @@
     "itemDefaultTitle": "通知"
   },
   "login": {
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
     "title": "登录 CyberStrikeAI",
     "titlePrefix": "登录",
     "subtitle": "使用平台账号登录，默认管理员为 admin。",
@@ -3330,6 +3332,9 @@
     "detailSession": "会话"
   },
   "settingsSecurity": {
+    "currentRequired": "请输入当前密码",
+    "newTooShort": "新密码至少需要 8 位",
+    "confirmMismatch": "两次输入的新密码不一致",
     "changePasswordTitle": "修改密码",
     "changePasswordDesc": "修改登录密码后，需要使用新密码重新登录。",
     "currentPassword": "当前密码",

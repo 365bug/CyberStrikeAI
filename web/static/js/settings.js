@@ -4062,6 +4062,28 @@ async function saveToolsConfig() {
     }
 }
 
+function setPasswordFieldError(input, message) {
+    if (!input) return;
+    input.classList.toggle('error', !!message);
+    input.setAttribute('aria-invalid', message ? 'true' : 'false');
+    const error = document.getElementById(input.id + '-error');
+    if (error) {
+        error.textContent = message || '';
+        error.hidden = !message;
+        input.setAttribute('aria-describedby', error.id);
+    }
+}
+
+function passwordValidationText(key, fallback) {
+    return typeof window.t === 'function' ? window.t('settingsSecurity.' + key) : fallback;
+}
+
+function clearPasswordFieldError(input) {
+    setPasswordFieldError(input, '');
+    const error = document.getElementById('password-form-error');
+    if (error) { error.textContent = ''; error.hidden = true; }
+}
+
 function resetPasswordForm() {
     const currentInput = document.getElementById('auth-current-password');
     const newInput = document.getElementById('auth-new-password');
@@ -4070,9 +4092,11 @@ function resetPasswordForm() {
     [currentInput, newInput, confirmInput].forEach(input => {
         if (input) {
             input.value = '';
-            input.classList.remove('error');
+            setPasswordFieldError(input, '');
         }
     });
+    const error = document.getElementById('password-form-error');
+    if (error) { error.textContent = ''; error.hidden = true; }
 }
 
 async function changePassword() {
@@ -4081,7 +4105,9 @@ async function changePassword() {
     const confirmInput = document.getElementById('auth-confirm-password');
     const submitBtn = document.querySelector('.change-password-submit');
 
-    [currentInput, newInput, confirmInput].forEach(input => input && input.classList.remove('error'));
+    [currentInput, newInput, confirmInput].forEach(input => setPasswordFieldError(input, ''));
+    const formError = document.getElementById('password-form-error');
+    if (formError) { formError.textContent = ''; formError.hidden = true; }
 
     const currentPassword = currentInput?.value.trim() || '';
     const newPassword = newInput?.value.trim() || '';
@@ -4090,22 +4116,22 @@ async function changePassword() {
     let hasError = false;
 
     if (!currentPassword) {
-        currentInput?.classList.add('error');
+        setPasswordFieldError(currentInput, passwordValidationText('currentRequired', '请输入当前密码'));
         hasError = true;
     }
 
     if (!newPassword || newPassword.length < 8) {
-        newInput?.classList.add('error');
+        setPasswordFieldError(newInput, passwordValidationText('newTooShort', '新密码至少需要 8 位'));
         hasError = true;
     }
 
     if (newPassword !== confirmPassword) {
-        confirmInput?.classList.add('error');
+        setPasswordFieldError(confirmInput, passwordValidationText('confirmMismatch', '两次输入的新密码不一致'));
         hasError = true;
     }
 
     if (hasError) {
-        alert(typeof window.t === 'function' ? window.t('settings.security.fillPasswordHint') : '请正确填写当前密码和新密码，新密码至少 8 位且需要两次输入一致。');
+        [currentInput, newInput, confirmInput].find(input => input && input.getAttribute('aria-invalid') === 'true')?.focus();
         return;
     }
 
@@ -4137,6 +4163,7 @@ async function changePassword() {
         closeSettings();
     } catch (error) {
         console.error('修改密码失败:', error);
+        if (formError) { formError.textContent = error.message; formError.hidden = false; }
         alert((typeof window.t === 'function' ? window.t('settings.security.changePasswordFailed') : '修改密码失败') + ': ' + error.message);
     } finally {
         if (submitBtn) {

@@ -6550,6 +6550,33 @@ html[data-theme="dark"] .chat-input-container .send-btn:disabled::before {
     margin-bottom: 0;
 }
 
+.login-password-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.login-password-field input {
+    min-width: 0;
+    flex: 1;
+}
+
+.login-password-field button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.password-field-error {
+    color: var(--error-color, #dc3545);
+    margin-top: 6px;
+    font-size: 0.8125rem;
+}
+
+.login-form input[aria-invalid="true"],
+.login-form input[aria-invalid="true"]:focus {
+    border-color: var(--error-color, #dc3545);
+}
+
 .login-form .form-group label {
     display: block;
     margin-bottom: 8px;

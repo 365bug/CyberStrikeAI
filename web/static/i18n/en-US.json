@@ -68,6 +68,8 @@
     "itemDefaultTitle": "Notification"
   },
   "login": {
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
     "title": "Sign in to CyberStrikeAI",
     "titlePrefix": "Sign in to",
     "subtitle": "Sign in with a platform account. The default administrator is admin.",
@@ -3342,6 +3344,9 @@
     "detailSession": "Session"
   },
   "settingsSecurity": {
+    "currentRequired": "Enter your current password",
+    "newTooShort": "The new password must contain at least 8 characters",
+    "confirmMismatch": "The new passwords do not match",
     "changePasswordTitle": "Change password",
     "changePasswordDesc": "After changing password, sign in again with the new password.",
     "currentPassword": "Current password",

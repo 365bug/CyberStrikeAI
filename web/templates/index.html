@@ -50,14 +50,17 @@
                 </h2>
                 <p class="login-subtitle" data-i18n="login.subtitle">使用平台账号登录，默认管理员为 admin。</p>
             </div>
-            <form id="login-form" class="login-form">
+            <form id="login-form" class="login-form" novalidate>
                 <div class="form-group">
                     <label for="login-username" data-i18n="login.usernameLabel">用户名</label>
                     <input type="text" id="login-username" placeholder="admin" required maxlength="64" autocomplete="username" data-i18n="login.usernamePlaceholder" data-i18n-attr="placeholder" />
                 </div>
                 <div class="form-group">
                     <label for="login-password" data-i18n="login.passwordLabel">密码</label>
-                    <input type="password" id="login-password" placeholder="输入登录密码" required autocomplete="current-password" data-i18n="login.passwordPlaceholder" data-i18n-attr="placeholder" />
+                    <div class="login-password-field">
+                        <input type="password" id="login-password" placeholder="输入登录密码" required autocomplete="current-password" aria-describedby="login-error" data-i18n="login.passwordPlaceholder" data-i18n-attr="placeholder" />
+                        <button type="button" id="login-password-toggle" class="btn-secondary" aria-controls="login-password" aria-pressed="false" onclick="toggleLoginPasswordVisibility()" data-i18n="login.showPassword">显示密码</button>
+                    </div>
                 </div>
                 <div id="login-error" class="login-error" role="alert" style="display: none;"></div>
                 <button type="submit" class="btn-primary login-submit">
@@ -5069,16 +5072,20 @@
                                     <div class="settings-form">
                                         <div class="form-group">
                                             <label for="auth-current-password" data-i18n="settingsSecurity.currentPassword">当前密码</label>
-                                            <input type="password" id="auth-current-password" data-i18n="settingsSecurity.currentPasswordPlaceholder" data-i18n-attr="placeholder" placeholder="输入当前登录密码" autocomplete="current-password" />
+                                            <input type="password" id="auth-current-password" oninput="clearPasswordFieldError(this)" data-i18n="settingsSecurity.currentPasswordPlaceholder" data-i18n-attr="placeholder" placeholder="输入当前登录密码" autocomplete="current-password" />
+                                            <small id="auth-current-password-error" class="password-field-error" role="alert" hidden></small>
                                         </div>
                                         <div class="form-group">
                                             <label for="auth-new-password" data-i18n="settingsSecurity.newPassword">新密码</label>
-                                            <input type="password" id="auth-new-password" data-i18n="settingsSecurity.newPasswordPlaceholder" data-i18n-attr="placeholder" placeholder="设置新密码（至少 8 位）" autocomplete="new-password" />
+                                            <input type="password" id="auth-new-password" oninput="clearPasswordFieldError(this)" data-i18n="settingsSecurity.newPasswordPlaceholder" data-i18n-attr="placeholder" placeholder="设置新密码（至少 8 位）" autocomplete="new-password" />
+                                            <small id="auth-new-password-error" class="password-field-error" role="alert" hidden></small>
                                         </div>
                                         <div class="form-group">
                                             <label for="auth-confirm-password" data-i18n="settingsSecurity.confirmPassword">确认新密码</label>
-                                            <input type="password" id="auth-confirm-password" data-i18n="settingsSecurity.confirmPasswordPlaceholder" data-i18n-attr="placeholder" placeholder="再次输入新密码" autocomplete="new-password" />
+                                            <input type="password" id="auth-confirm-password" oninput="clearPasswordFieldError(this)" data-i18n="settingsSecurity.confirmPasswordPlaceholder" data-i18n-attr="placeholder" placeholder="再次输入新密码" autocomplete="new-password" />
+                                            <small id="auth-confirm-password-error" class="password-field-error" role="alert" hidden></small>
                                         </div>
+                                        <div id="password-form-error" class="password-field-error" role="alert" hidden></div>
                                         <div class="form-actions">
                                             <button class="btn-secondary" type="button" onclick="resetPasswordForm()" data-i18n="settingsSecurity.clear">清空</button>
                                             <button class="btn-primary change-password-submit" type="button" data-require-permission="auth:self" onclick="changePassword()" data-i18n="settingsSecurity.changePasswordBtn">修改密码</button>

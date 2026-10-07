@@ -277,6 +277,9 @@ go build -o cyberstrike-ai ./cmd/server
 才回落到"下载 GitHub Release 包 + rsync"的老路径，此时源码仓库由 `--repo owner/name` 或 `GITHUB_REPO`
 决定（都不给才用内置默认值，并会警告说明代码来自哪个仓库）。
 
+更新源可在 `config.yaml` 的 `update` 段或控制台「一键更新」页指定（跟随官方仓库、自己的二开或别人的二开
+都只是一处配置）；解压安装（目录里没有 git）也能在同一页「预览并接入」后进入一键更新。
+
 1. （首次使用）启用脚本：`chmod +x upgrade.sh`
 2. 升级：`./upgrade.sh`（可选参数：`--check`、`--tag vX.Y.Z`、`--repo owner/name`、`--no-venv`、`--yes`）。本地的 `tools/`、`roles/`、`skills/`、`agents/` 会始终保留不被覆盖。
 3. 脚本会备份你的 `config.yaml` 和 `data/`，升级代码，更新 `config.yaml` 的 `version` 字段后重启服务。

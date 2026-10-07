@@ -47005,3 +47005,39 @@ html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
     white-space: pre-wrap;
     word-break: break-word;
 }
+
+/* 更新源区块：一行一个输入（label 上、输入下），与平台的设置表单同构。 */
+.update-source-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.update-source-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.update-source-input {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.update-source-url,
+.update-source-remote,
+.update-source-branch {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.update-source-save-btn,
+.update-adopt-preview-btn,
+.update-adopt-confirm-btn {
+    align-self: flex-start;
+}

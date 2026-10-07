@@ -13,7 +13,24 @@ const ru = JSON.parse(fs.readFileSync('web/static/i18n/ru-RU.json', 'utf8'));
 
 // The only handlers this console is allowed to wire into markup.
 const HANDLES = ['startUpdateApply', 'checkForUpdates', 'rollbackUpdate',
-    'updateRestartChoiceChanged', 'loadUpdateConsole'];
+    'updateRestartChoiceChanged', 'loadUpdateConsole',
+    'saveUpdateSource', 'previewAdoptSource', 'confirmAdoptSource'];
+
+// The envelope shape GET /api/system/update answers with, plus what the source endpoints return.
+const emptySource = { remote: '', remoteUrl: '', branch: '', configured: false };
+const configuredSource = { remote: '', remoteUrl: 'https://github.com/Sycun/CyberStrikeAI.git', branch: 'main', configured: true };
+const adoptPlan = {
+    root: '/srv/csai',
+    source: 'https://github.com/Sycun/CyberStrikeAI.git',
+    branch: 'main',
+    commit: 'abc1234',
+    subject: 'target head',
+    incoming: 42,
+    overwrittenTotal: 2,
+    overwritten: ['web/static/js/a.js', 'web/static/js/b.js'],
+    protectedTotal: 1,
+    protected: ['roles/我的角色.yaml'],
+};
 
 function flatKeys(obj, prefix, out) {
     Object.keys(obj).forEach(k => {
@@ -64,9 +81,14 @@ function statusOf(patch) {
     return Object.assign({}, baseStatus, patch || {});
 }
 
-// The shape is the endpoint's own: {status, job, canRestart}. job is null until an update ran.
-function envelope(status, job, canRestart) {
-    return { status: status || statusOf(), job: job === undefined ? null : job, canRestart: canRestart !== false };
+// The shape is the endpoint's own: {status, job, canRestart, source}. job is null until an update ran.
+function envelope(status, job, canRestart, source) {
+    return {
+        status: status || statusOf(),
+        job: job === undefined ? null : job,
+        canRestart: canRestart !== false,
+        source: source || emptySource,
+    };
 }
 
 const runningJob = {
@@ -148,11 +170,13 @@ function harness(options) {
     }
 
     const responses = Object.assign({
-        'GET /api/system/update': [{ status: 200, body: envelope(opts.status, opts.job, opts.canRestart) }],
+        'GET /api/system/update': [{ status: 200, body: envelope(opts.status, opts.job, opts.canRestart, opts.source) }],
         'POST /api/system/update/check': [{ status: 200, body: { status: statusOf(opts.checkedStatus) } }],
         'POST /api/system/update/apply': [{ status: 202, body: { job_id: 'upd-1', state: 'running' } }],
         'GET /api/system/update/job': [{ status: 200, body: { job: opts.job || runningJob } }],
         'POST /api/system/update/rollback': [{ status: 200, body: { result: { fromCommit: 'f9e8d7c', toCommit: 'a1b2c3d' } } }],
+        'POST /api/system/update/source': [{ status: 200, body: { source: opts.source || emptySource } }],
+        'POST /api/system/update/adopt': [{ status: 200, body: { plan: adoptPlan } }],
     }, opts.responses || {});
 
     const sandbox = {
@@ -981,4 +1005,64 @@ test('the hint describes the automatic check instead of denying any network use'
             label + ' still promises the page never touches the network');
         assert.match(text, /自动|automatic|automatically|автоматическ/, label + ' must mention the automatic check');
     }
+});
+
+test('the source section shows what is in effect, and saving posts all three fields', async () => {
+    const h = await harness({ status: statusOf({ installed: true }), source: configuredSource });
+    assert.match(h.html(), /https:\/\/github\.com\/Sycun\/CyberStrikeAI\.git/,
+        'the configured address must be visible');
+    assert.match(h.html(), /update-source-save-btn/);
+
+    h.runHandler("updateSourceFieldChanged('branch', 'release')");
+    await h.fire('saveUpdateSource');
+    await h.flush();
+    const save = h.calls.find(c => c.url === '/api/system/update/source');
+    assert.ok(save, 'saving must hit the source endpoint');
+    assert.deepEqual(JSON.parse(save.body), {
+        remote: '', remoteUrl: 'https://github.com/Sycun/CyberStrikeAI.git', branch: 'release',
+    });
+    assert.ok(h.toasts.some(t => t.type === 'success'), 'a saved source must be confirmed');
+});
+
+test('a refused save shows the server reason instead of a generic failure', async () => {
+    const refusal = '远端名与远端地址二选一：要么指名已有远端，要么直接给地址';
+    const h = await harness({
+        status: statusOf({ installed: true }),
+        source: configuredSource,
+        responses: {
+            'POST /api/system/update/source': [{ status: 400, body: { error: refusal } }],
+        },
+    });
+    h.runHandler("updateSourceFieldChanged('remote', 'origin')");
+    await h.fire('saveUpdateSource');
+    await h.flush();
+    assert.match(h.html(), /二选一/, 'the refusal must be on screen');
+    assert.ok(h.toasts.some(t => t.type === 'error' && t.msg.includes('二选一')), 'and in a toast');
+    assert.match(h.html(), /origin/, 'the typed value must survive the failed save');
+});
+
+test('the adopt entry appears only for a directory that is not a git installation', async () => {
+    const notGit = await harness({ status: statusOf({ installed: false }), source: configuredSource });
+    assert.match(notGit.html(), /previewAdoptSource\(\)/, 'a configured non-git tree must offer connecting');
+
+    const gitTree = await harness({ status: statusOf({ installed: true }), source: configuredSource });
+    assert.doesNotMatch(gitTree.html(), /previewAdoptSource\(\)/, 'a git installation updates, it does not adopt');
+});
+
+test('adopt previews first, and confirming carries the counts into the dialog', async () => {
+    const h = await harness({ status: statusOf({ installed: false }), source: configuredSource });
+    await h.fire('previewAdoptSource');
+    await h.flush();
+    assert.match(h.html(), /abc1234/, 'the target commit must be on screen');
+    assert.match(h.html(), /web\/static\/js\/a\.js/, 'the files to be replaced must be listed');
+    assert.match(h.html(), /roles\/我的角色\.yaml/, 'and the operator content that is kept');
+
+    await h.fire('confirmAdoptSource');
+    await h.flush();
+    assert.strictEqual(h.confirms.length, 1, 'connecting must ask first');
+    assert.match(h.confirms[0], /42/, 'the dialog counts what will happen');
+    const adopt = h.calls.find(c => c.url === '/api/system/update/adopt' && c.method === 'POST' && c.body && c.body.includes('"confirm":true'));
+    assert.ok(adopt, 'confirming must post to adopt');
+    assert.deepEqual(JSON.parse(adopt.body), { confirm: true, restart: false });
+    assert.ok(h.vars.getPollTimer(), 'the job it started must be polled');
 });

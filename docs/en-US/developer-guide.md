@@ -65,6 +65,35 @@ first remote when none of those names exists), and the branch defaults to what t
 shell over the same implementation: when this directory is a git work tree it just calls
 `./cyberstrike-ai -update`.
 
+### Choosing the source (the update section of config.yaml)
+
+Unset, the rules above apply; set, the explicit choice wins:
+
+```yaml
+update:
+  remote: origin        # an existing remote name (mine/origin/upstream/anything), or remote_url instead
+  # remote_url: https://github.com/AIPentest/CyberStrikeAI.git
+  branch: main          # optional; defaults to @{upstream} / the current branch
+```
+
+The console page edits and saves all three. Saving validates: remote and branch names go through the
+same allowlist an update uses, and the address allowlist is https/http/ssh/git/file plus local
+absolute paths - git's `ext::` transport executes commands and is rejected outright. Following the
+official repository, your own fork, or somebody else's second-development repository is exactly the
+choice this section expresses.
+
+### Connecting a non-git installation (the tarball kind)
+
+An installation that started as an unpacked Release archive has no `.git`; once a source is saved it
+can be connected from the same page: the preview fetches in a throwaway repository and first lists
+**the local files the target would replace** and **the operator content that will be kept**; on
+confirm the directory becomes a git work tree (`git init`, origin added, the target branch checked
+out), every replaced file is kept under `.update-backup/<timestamp>/overwritten/`, operator content
+is stashed and restored as usual, and the binary is rebuilt. From then on it is a normal
+installation with one-click update and rollback - but note there is no git history before the
+connection, so the connection itself has no earlier commit to roll back to; the first real update
+writes the first rollback point.
+
 ### The four refusals
 
 | situation | reason | meaning and what to do |

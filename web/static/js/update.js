@@ -12,6 +12,8 @@ const UPDATE_FAILURE_KEYS = {
     apply: 'applyFailed',
     rollback: 'rollbackFailed',
     load: 'loadFailed',
+    source: 'sourceSaveFailed',
+    adopt: 'adoptFailed',
 };
 
 let updateConsoleState = null;   // GET /api/system/update 的整包：{status, job, canRestart}
@@ -21,10 +23,31 @@ let updateChecking = false;      // 只影响「检查更新」按钮的措辞
 let updatePollTimer = null;
 let updateRestartChoice = false; // 勾选框要在轮询重绘之后仍然是勾着的
 let updateAutoCheckDone = false; // 每个会话只自动查一次远端，不每次重绘都去打扰
+let updateSourceDraft = null;    // 编辑中的更新源；null=还贴着服务端保存的值
+let updateSourceError = '';      // 最近一次保存/接入失败的原因，画在区块里
+let updateAdoptPlan = null;      // 预览回来的接入计划；确认后清掉
 
 function updateT(key, opts) {
     const k = 'update.' + key;
     return typeof window.t === 'function' ? window.t(k, opts) : k;
+}
+
+function updateSourceOf() {
+    return (updateConsoleState && updateConsoleState.source) || { remote: '', remoteUrl: '', branch: '', configured: false };
+}
+
+// 草稿优先：轮询重绘不许把正在输入的地址冲掉；保存成功后草稿丢弃、回到服务端的值。
+function updateSourceField(field) {
+    if (updateSourceDraft && typeof updateSourceDraft[field] === 'string') return updateSourceDraft[field];
+    return updateSourceOf()[field] || '';
+}
+
+function updateSourceFieldChanged(field, value) {
+    if (!updateSourceDraft) {
+        const s = updateSourceOf();
+        updateSourceDraft = { remote: s.remote || '', remoteUrl: s.remoteUrl || '', branch: s.branch || '' };
+    }
+    updateSourceDraft[field] = String(value == null ? '' : value);
 }
 
 // scheduleUpdateAutoCheck answers the question the page exists to answer, without making
@@ -108,6 +131,7 @@ async function fetchUpdateStatus() {
         status: r.data.status || {},
         job: r.data.job || null,
         canRestart: !!r.data.canRestart,
+        source: r.data.source || { remote: '', remoteUrl: '', branch: '', configured: false },
     };
     return updateConsoleState;
 }
@@ -362,6 +386,71 @@ async function rollbackUpdate() {
     }, 'rollback');
 }
 
+// 更新源：服务端负责校验与写入（config.yaml 的 update 段），这里只做搬运与说明。
+async function saveUpdateSource() {
+    if (updateBusy) return;
+    const body = {
+        remote: updateSourceField('remote').trim(),
+        remoteUrl: updateSourceField('remoteUrl').trim(),
+        branch: updateSourceField('branch').trim(),
+    };
+    updateSourceError = '';
+    await withUpdateBusy(async () => {
+        const r = await runUpdateRequest('POST', '/api/system/update/source', body);
+        if (!r.ok) {
+            // 服务端的拒绝文案（二选一、地址不合法……）就是要展示的那句，不在这里另编。
+            updateSourceError = updateT('sourceSaveFailed', { reason: r.error });
+            renderUpdateConsole();
+            notify(updateSourceError, 'error');
+            return;
+        }
+        updateSourceDraft = null;
+        if (updateConsoleState) updateConsoleState.source = r.data.source || updateConsoleState.source;
+        resetUpdateCheck();
+        await fetchUpdateStatus();
+        renderUpdateConsole();
+        notify(updateT('sourceSaveOk'), 'success');
+    }, 'source');
+}
+
+// 预览无副作用（服务端在临时仓库里 fetch），所以可以先点、先看清单再决定。
+async function previewAdoptSource() {
+    if (updateBusy) return;
+    updateSourceError = '';
+    await withUpdateBusy(async () => {
+        const r = await runUpdateRequest('POST', '/api/system/update/adopt', { confirm: false });
+        if (!r.ok) {
+            updateSourceError = updateT('adoptFailed', { reason: r.error });
+            renderUpdateConsole();
+            notify(updateSourceError, 'error');
+            return;
+        }
+        updateAdoptPlan = r.data.plan || null;
+        renderUpdateConsole();
+    }, 'adopt');
+}
+
+async function confirmAdoptSource() {
+    if (updateBusy || !updateAdoptPlan) return;
+    const restart = updateRestartRequested();
+    const text = updateT('adoptConfirmText', {
+        incoming: updateAdoptPlan.incoming,
+        overwritten: updateAdoptPlan.overwrittenTotal,
+        protectedFiles: updateAdoptPlan.protectedTotal,
+    });
+    if (!window.confirm(text)) return;
+
+    await withUpdateBusy(async () => {
+        const r = await runUpdateRequest('POST', '/api/system/update/adopt', { confirm: true, restart: restart });
+        if (!r.ok) throw new Error(r.error);
+        updateAdoptPlan = null;
+        resetUpdateCheck();
+        startUpdatePolling();
+        notify(updateT('adoptAccepted', { id: r.data.job_id || '-' }), 'success');
+        await pollUpdateJob();
+    }, 'adopt');
+}
+
 // ---------------------------------------------------------------------------
 // 渲染
 // ---------------------------------------------------------------------------
@@ -385,6 +474,78 @@ function updateMark(ok, yesKey, noKey, reason) {
     }
     return '<span class="' + cls + '" title="' + escapeAttr(String(reason)) + '">' +
         escapeHtml(ok ? updateT(yesKey) : updateT(noKey)) + '</span>';
+}
+
+function renderUpdateSourceBody(status) {
+    const src = updateSourceOf();
+    const parts = [];
+    parts.push('<div class="update-hint">' + escapeHtml(src.configured ? updateT('sourceFromConfig') : updateT('sourceFromTracked')) + '</div>');
+    if (status.remoteUrl) {
+        parts.push('<div class="update-facts">' + updateFact(updateT('sourceUrl'), status.remoteUrl) + '</div>');
+    }
+    if (status.remote) {
+        parts.push('<div class="update-facts">' + updateFact(updateT('sourceRemote'), status.remote) + '</div>');
+    }
+    if (status.branch) {
+        parts.push('<div class="update-facts">' + updateFact(updateT('sourceBranch'), status.branch) + '</div>');
+    }
+    // 手输错误属于页面自己的状态，重绘（轮询）不能把它冲掉。
+    const disabled = updateBusy ? ' disabled data-state-disabled="true"' : '';
+    parts.push('<div class="update-source-form">' +
+        '<label>' + escapeHtml(updateT('sourceUrlLabel')) +
+        '<input type="text" class="update-source-input update-source-url" value="' + escapeAttr(updateSourceField('remoteUrl')) +
+        '" placeholder="https://github.com/owner/repo.git" oninput="updateSourceFieldChanged(\'remoteUrl\', this.value)"></label>' +
+        '<label>' + escapeHtml(updateT('sourceRemoteLabel')) +
+        '<input type="text" class="update-source-input update-source-remote" value="' + escapeAttr(updateSourceField('remote')) +
+        '" placeholder="origin" oninput="updateSourceFieldChanged(\'remote\', this.value)"></label>' +
+        '<label>' + escapeHtml(updateT('sourceBranchLabel')) +
+        '<input type="text" class="update-source-input update-source-branch" value="' + escapeAttr(updateSourceField('branch')) +
+        '" placeholder="main" oninput="updateSourceFieldChanged(\'branch\', this.value)"></label>' +
+        '<div class="update-actions"><button class="btn-secondary update-source-save-btn"' + disabled +
+        ' data-require-permission="update:apply" onclick="saveUpdateSource()">' +
+        escapeHtml(updateT('sourceSaveBtn')) + '</button></div></div>');
+    if (updateSourceError) {
+        parts.push('<div class="update-error">' + escapeHtml(updateSourceError) + '</div>');
+    }
+    if (!status.installed) {
+        parts.push(renderAdoptBody());
+    }
+    return parts.join('');
+}
+
+function renderAdoptBody() {
+    const typedUrl = updateSourceField('remoteUrl') || updateSourceField('remote');
+    if (!updateSourceOf().configured && !typedUrl) {
+        return '<div class="update-hint">' + escapeHtml(updateT('adoptNeedsSource')) + '</div>';
+    }
+    const parts = [];
+    parts.push('<div class="update-hint">' + escapeHtml(updateT('adoptHint')) + '</div>');
+    const disabled = updateBusy ? ' disabled data-state-disabled="true"' : '';
+    if (!updateAdoptPlan) {
+        parts.push('<div class="update-actions"><button class="btn-primary update-adopt-preview-btn"' + disabled +
+            ' data-require-permission="update:apply" onclick="previewAdoptSource()">' +
+            escapeHtml(updateT('adoptPreviewBtn')) + '</button></div>');
+        return parts.join('');
+    }
+    const plan = updateAdoptPlan;
+    parts.push('<div class="update-facts">' +
+        updateFact(updateT('adoptIncoming'), plan.incoming) +
+        updateFact(updateT('adoptOverwrittenTotal'), plan.overwrittenTotal) +
+        updateFact(updateT('adoptProtectedTotal'), plan.protectedTotal) +
+        updateFact(updateT('sourceBranch'), plan.branch) +
+        updateFact(updateT('adoptCommit'), plan.commit) + '</div>');
+    const list = (items, title) => items && items.length
+        ? '<h4 class="update-sub-title">' + escapeHtml(title) + '</h4><ul class="update-commit-list">' +
+          items.map(p => '<li><code title="' + escapeAttr(String(p)) + '">' + escapeHtml(String(p)) + '</code></li>').join('') + '</ul>'
+        : '';
+    parts.push(list(plan.overwritten, updateT('adoptOverwrittenTitle')));
+    parts.push(list(plan.protected, updateT('adoptProtectedTitle')));
+    parts.push('<div class="update-hint">' + escapeHtml(updateT('adoptBackupNote')) + '</div>');
+    parts.push(renderUpdateRestartChoice());
+    parts.push('<div class="update-actions"><button class="btn-primary update-adopt-confirm-btn"' + disabled +
+        ' data-require-permission="update:apply" onclick="confirmAdoptSource()">' +
+        escapeHtml(updateT('adoptConfirmBtn')) + '</button></div>');
+    return parts.join('');
 }
 
 function renderUpdateInstallBody(status) {
@@ -566,9 +727,19 @@ function renderUpdateResult(result) {
         ? '<ul class="update-kept-list">' + kept.map(p =>
             '<li><code title="' + escapeAttr(String(p)) + '">' + escapeHtml(String(p)) + '</code></li>').join('') + '</ul>'
         : '<div class="update-hint">' + escapeHtml(updateT('nothingKept')) + '</div>';
+    const replaced = result.overwritten || [];
+    const replacedList = replaced.length
+        ? '<h4 class="update-sub-title">' + escapeHtml(updateT('resultOverwrittenTitle')) + '</h4>' +
+          '<ul class="update-kept-list">' + replaced.map(p =>
+              '<li><code title="' + escapeAttr(String(p)) + '">' + escapeHtml(String(p)) + '</code></li>').join('') + '</ul>'
+        : '';
+    const adoptedNote = result.adopted
+        ? '<div class="update-hint">' + escapeHtml(updateT('adoptedNoPreviousCommit')) + '</div>'
+        : '';
     return '<div class="update-result">' +
         '<h4 class="update-sub-title">' + escapeHtml(updateT('resultTitle')) + '</h4>' +
         '<div class="update-facts">' + facts + '</div><div class="update-marks">' + marks + '</div>' +
+        adoptedNote + replacedList +
         '<h4 class="update-sub-title">' + escapeHtml(updateT('keptTitle')) + '</h4>' + keptList +
         '</div>';
 }
@@ -628,6 +799,7 @@ function renderUpdateConsole() {
 
     const parts = [];
     parts.push(updateSection(updateT('installTitle'), renderUpdateInstallBody(status)));
+    parts.push(updateSection(updateT('sourceTitle'), renderUpdateSourceBody(status)));
     parts.push(updateSection(updateT('remoteTitle'), renderUpdateRemoteBody(status)));
     parts.push(updateSection(updateT('applyTitle'), renderUpdateApplyBody(status, job)));
     parts.push(updateSection(updateT('jobTitle'), renderUpdateJobBody(job)));
@@ -646,3 +818,7 @@ window.rollbackUpdate = rollbackUpdate;
 window.updateRestartChoiceChanged = updateRestartChoiceChanged;
 window.stopUpdatePolling = stopUpdatePolling;
 window.renderUpdateConsole = renderUpdateConsole;
+window.saveUpdateSource = saveUpdateSource;
+window.previewAdoptSource = previewAdoptSource;
+window.confirmAdoptSource = confirmAdoptSource;
+window.updateSourceFieldChanged = updateSourceFieldChanged;

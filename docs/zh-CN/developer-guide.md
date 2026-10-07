@@ -67,6 +67,30 @@ go run ./cmd/server --config config.yaml
 remote 里取（都不在时取第一个 remote），分支默认取当前分支 `@{upstream}` 指向的名字（没有 upstream 时用当前分支名）。
 `upgrade.sh` 现在只是这条实现的薄壳：本目录是 git 工作树时它直接调 `./cyberstrike-ai -update`。
 
+### 选择更新源（config.yaml 的 update 段）
+
+不配置时按上面的规则跟随本树；配置后显式来源优先：
+
+```yaml
+update:
+  remote: origin        # 已有远端名（mine/origin/upstream/任意名），与 remote_url 二选一
+  # remote_url: https://github.com/AIPentest/CyberStrikeAI.git
+  branch: main          # 可选；留空按 upstream/当前分支推断
+```
+
+控制台的「一键更新」页可以直接编辑并保存这三项。服务端保存时校验：远端名与分支名走与更新同一套白名单，
+地址只允许 https/http/ssh/git/file:// 与本机绝对路径——git 的 `ext::` 传输会执行命令，一律拒绝。
+想让这套安装跟随官方仓库、自己的二开或别人的二开，改的都是这一处。
+
+### 接入非 git 安装（解压/打包装的那类）
+
+一开始用 Release 包解压安装、目录里没有 `.git` 的，配好上面的地址后可在同一页执行「预览并接入」：
+预览在临时仓库里 fetch，先列出**会被目标版本替换的本机文件**与**会保留的运维者内容**；确认后目录接入
+成为 git 工作树（`git init` + 添加 origin + 落地目标分支），被替换的文件全部留底在
+`.update-backup/<时间戳>/overwritten/`，运维者内容照旧先暂存再放回，随后重编译二进制。
+接入后它就是正常安装，一键更新与回滚都可用了；注意接入前没有 git 历史，因此「接入」本身没有可回滚的
+上一提交，第一个回滚点由接入后的第一次更新写下。
+
 ### 四种拒绝场景
 
 | 场景 | reason | 含义与处理 |

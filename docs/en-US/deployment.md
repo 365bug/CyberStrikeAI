@@ -86,6 +86,15 @@ kept. For a fork this is the only path that does not overwrite you with somebody
 source is modified locally or the branch has diverged it refuses and says why instead of forcing.
 See [the developer guide](developer-guide.md) for the full semantics.
 
+The source is chosen either in the `update` section of `config.yaml` (`remote` or `remote_url`, plus
+an optional `branch`) or right on the console page: the official repository, your own fork, or
+somebody else's second-development repository are all just this one setting; unset, it follows the
+remote this directory already tracks. An installation unpacked from a Release archive (no `.git`)
+can be connected from the same page: the preview lists the files the target would replace and the
+operator content that is kept, replaced files are backed up under
+`.update-backup/<timestamp>/overwritten/`, and confirming turns the directory into a normal
+installation with one-click updates.
+
 `upgrade.sh` still works and is now a thin shell over that implementation, with two paths decided by
 the installation kind:
 

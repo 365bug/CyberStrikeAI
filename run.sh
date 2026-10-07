@@ -313,7 +313,7 @@ build_go_project() {
     (
         set +e  # disable errexit in subshell
         export GOPROXY="$GOPROXY"
-        go build -o "$BINARY_NAME" cmd/server/main.go >"$GO_BUILD_LOG" 2>&1
+        go build -o "$BINARY_NAME" ./cmd/server >"$GO_BUILD_LOG" 2>&1
         echo $? > "${GO_BUILD_LOG}.exit"
     ) &
     GO_BUILD_PID=$!

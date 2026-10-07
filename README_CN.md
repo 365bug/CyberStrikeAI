@@ -255,10 +255,10 @@ chmod +x run.sh && ./run.sh
 **其他启动方式：**
 ```bash
 # 直接运行（需自行配环境）；与 run.sh 默认一致可加 --https
-go run cmd/server/main.go --https
+go run ./cmd/server --https
 
 # 手动编译
-go build -o cyberstrike-ai cmd/server/main.go
+go build -o cyberstrike-ai ./cmd/server
 ./cyberstrike-ai --https
 ```
 

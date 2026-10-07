@@ -256,10 +256,10 @@ The `run.sh` script will automatically:
 **Alternative Launch Methods:**
 ```bash
 # Direct Go run (set up env yourself); add --https to match run.sh defaults
-go run cmd/server/main.go --https
+go run ./cmd/server --https
 
 # Manual build
-go build -o cyberstrike-ai cmd/server/main.go
+go build -o cyberstrike-ai ./cmd/server
 ./cyberstrike-ai --https
 ```
 

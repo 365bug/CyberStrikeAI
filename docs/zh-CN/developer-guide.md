@@ -54,7 +54,7 @@ go run ./cmd/server --config config.yaml
 
 | 入口 | 怎么用 |
 |---|---|
-| 控制台 | 「系统设置 → 一键更新」（`#system-update` 老深链仍可用）。打开这一区只读本机状态、不联网；点「检查更新」才去 fetch；「一键更新」发起任务并轮询进度；页面另有"更新完成后退出进程"勾选与回滚按钮 |
+| 控制台 | 「系统设置 → 一键更新」（`#system-update` 老深链仍可用）。打开这一区只读本机状态、不联网；点「检查更新」才去 fetch；「一键更新」发起任务并轮询进度；"更新完成后退出进程"在检测到守护进程（launchd/systemd 的启动标记）时默认勾选，重启期间页面守着重连、新进程一应答就自动刷新（会话在内存里，刷新后需重新登录）；另有回滚按钮 |
 | REST | `GET /api/system/update`（磁盘现状，不联网）、`POST /api/system/update/check`（fetch 后报告差集）、`POST /api/system/update/apply`（`202` 返回 `job_id`，用 `GET /api/system/update/job` 轮询）、`POST /api/system/update/rollback` |
 | CLI | `./cyberstrike-ai -check-update`、`./cyberstrike-ai -update`、`./cyberstrike-ai -update-rollback`。安装目录 = `--config` 所在目录，未给 `--config` 时是当前目录 |
 
@@ -125,7 +125,17 @@ update:
 
 进程只有在请求显式带 `restart: true`、且启动时装配了重启钩子时才会优雅退出（`Shutdown` 后退出码 0）。
 能不能被拉起来取决于外部守护（systemd、`run.sh`），页面如实这么写，而不是承诺一次可能不发生的启动；
-没装配钩子时要求重启是 `400`，而不是先停掉服务再自称重启了。未重启时接口只报告 `needsRestart`，旧二进制继续跑。
+没装配钩子时要求重启是 `400`，而不是先停掉服务再自称重启了。
+
+**待生效状态是持久的、可补重启。** 状态接口对比"启动时记下的二进制身份（大小 + 纳秒 mtime）"与磁盘
+现值：更新、回滚或 CLI 换过二进制而没重启时，`needsRestart` 为真、`binaryBuiltAt` 给出构建时间，
+控制台顶部出现常驻横幅与「立即重启服务」（`POST /api/system/update/restart`；没有待生效版本时
+`409 nothing_pending`、有任务在跑 `409`、没钩子 `400`）。`supervised` 字段来自环境标记（launchd 的
+`XPC_SERVICE_NAME`、systemd 的 `INVOCATION_ID`/`JOURNAL_STREAM`），只用来决定勾选框的默认值。
+
+**重启后页面自己回来。** 重启期间控制台换成自恢复视图，每 2 秒探一次状态接口：旧进程还在应答（200）
+就继续等；连不上说明正在退出；新进程接客但对旧会话只回 401——这就是"重启已完成"的判据，页面随即
+`location.replace` 回 `#system-update` 整页刷新。离开控制台则静默停表，不把已经走开的用户拽回来。
 
 ## 数据库
 

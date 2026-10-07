@@ -1139,6 +1139,7 @@ func setupRoutes(
 		protected.GET("/system/update/job", updateHandler.Job)
 		protected.POST("/system/update/check", updateHandler.Check)
 		protected.POST("/system/update/apply", updateHandler.Apply)
+		protected.POST("/system/update/restart", updateHandler.Restart)
 		protected.POST("/system/update/rollback", updateHandler.Rollback)
 		protected.POST("/system/update/adopt", updateHandler.Adopt)
 		protected.POST("/system/update/source", updateHandler.SaveSource)

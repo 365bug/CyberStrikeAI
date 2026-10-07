@@ -86,6 +86,12 @@ kept. For a fork this is the only path that does not overwrite you with somebody
 source is modified locally or the branch has diverged it refuses and says why instead of forcing.
 See [the developer guide](developer-guide.md) for the full semantics.
 
+When a supervisor is detected (systemd/launchd startup markers in the environment), the "exit after
+updating" tick is pre-ticked: the process stands down after a successful update, the supervisor brings
+the new binary back, and the page reloads itself once the service answers (sessions live in memory, so
+one fresh login follows). Forgot the tick, or swapped the binary from the CLI? The console carries a
+persistent banner with **Restart now** - no shell login needed.
+
 The source is chosen either in the `update` section of `config.yaml` (`remote` or `remote_url`, plus
 an optional `branch`) or right on the console page: the official repository, your own fork, or
 somebody else's second-development repository are all just this one setting; unset, it follows the

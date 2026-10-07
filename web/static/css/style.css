@@ -46737,6 +46737,76 @@ html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
     gap: 8px;
 }
 
+/* 待生效横幅：磁盘二进制与运行进程不一致时的常驻出口（忘勾重启也有救） */
+.update-restart-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid rgba(217, 130, 43, 0.45);
+    border-radius: 10px;
+    background: rgba(217, 130, 43, 0.12);
+}
+
+.update-restart-banner-text {
+    flex: 1 1 240px;
+    min-width: 0;
+    font-size: 13px;
+    color: #b06a17;
+}
+
+.update-restart-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* 自恢复视图：重启期间控制台让位给这一屏，新进程应答后整页刷新 */
+.update-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 32px 16px;
+    text-align: center;
+}
+
+.update-overlay-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid rgba(58, 110, 197, 0.25);
+    border-top-color: #2d5bb0;
+    border-radius: 50%;
+    animation: update-spin 0.9s linear infinite;
+}
+
+@keyframes update-spin {
+    to { transform: rotate(360deg); }
+}
+
+.update-overlay-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.update-overlay-body {
+    max-width: 460px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.update-overlay-slow {
+    max-width: 460px;
+    font-size: 13px;
+    color: #b06a17;
+}
+
+.update-overlay-actions {
+    margin-top: 4px;
+}
+
 .update-intro {
     color: var(--text-secondary);
     margin: 0 0 12px;

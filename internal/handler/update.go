@@ -6,6 +6,7 @@ import (
 	"cyberstrike-ai/internal/update"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// updateRestartDelay is how long a stand-down waits after the response is written: the
+// page that asked for the restart gets one more poll window to read the final state
+// before the process it is watching goes away. A variable so tests do not sleep for it.
+var updateRestartDelay = 2 * time.Second
 
 // UpdateHandler is the "update my own source" surface: what this installation is, what
 // its remote has that it does not, and one action that moves the tree and rebuilds the
@@ -37,6 +43,10 @@ type UpdateHandler struct {
 	// saveSource persists a new source through the config layer; nil means this start
 	// has no config to write to.
 	saveSource func(remote, remoteURL, branch string) error
+	// baseline is the binary this process is actually running: the file on disk at
+	// construction time. An update, a rollback or a CLI run that replaces it leaves a
+	// different file behind, and that difference is what "restart to activate" means.
+	baseline update.BinaryStamp
 
 	mu     sync.Mutex
 	jobs   map[string]*updateJob
@@ -79,8 +89,33 @@ func NewUpdateHandler(root string, logger *zap.Logger, auditSvc *audit.Service, 
 		restart:    restart,
 		source:     source,
 		saveSource: saveSource,
+		baseline:   update.StampBinary(root, update.Options{Root: root}),
 		jobs:       map[string]*updateJob{},
 	}
+}
+
+// restartPending reports whether the binary on disk is no longer the one this process is
+// running, and when that binary was built (empty when there is nothing on disk to run).
+func (h *UpdateHandler) restartPending() (bool, string) {
+	stamp := update.StampBinary(h.root, h.options())
+	if stamp.Same(h.baseline) {
+		return false, ""
+	}
+	builtAt := ""
+	if stamp.Exists {
+		builtAt = stamp.ModTime.Format(time.RFC3339)
+	}
+	return true, builtAt
+}
+
+// restartSupervised reports whether something outside this process is set up to bring it
+// back: launchd (XPC_SERVICE_NAME) and systemd (INVOCATION_ID / JOURNAL_STREAM) both leave
+// a marker in the environment. It is only the page's default for the restart tick - the
+// operator's own checkbox remains the decision.
+func restartSupervised() bool {
+	return strings.TrimSpace(os.Getenv("XPC_SERVICE_NAME")) != "" ||
+		strings.TrimSpace(os.Getenv("INVOCATION_ID")) != "" ||
+		strings.TrimSpace(os.Getenv("JOURNAL_STREAM")) != ""
 }
 
 func (h *UpdateHandler) options() update.Options {
@@ -111,11 +146,15 @@ func (h *UpdateHandler) GetStatus(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	needsRestart, binaryBuiltAt := h.restartPending()
 	c.JSON(http.StatusOK, gin.H{
-		"status":     snap,
-		"job":        h.latest(),
-		"canRestart": h.restart != nil,
-		"source":     h.sourceView(),
+		"status":        snap,
+		"job":           h.latest(),
+		"canRestart":    h.restart != nil,
+		"supervised":    restartSupervised(),
+		"needsRestart":  needsRestart,
+		"binaryBuiltAt": binaryBuiltAt,
+		"source":        h.sourceView(),
 	})
 }
 
@@ -248,6 +287,28 @@ func (h *UpdateHandler) Apply(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"job_id": job.ID, "state": job.State})
 }
 
+// Restart answers POST /api/system/update/restart: stand this process down so the binary
+// already on disk - an update or a rollback that ran without one - becomes the thing
+// answering requests. It refuses when there is nothing to activate, because a bounce that
+// cannot change anything is a dropped service for no reason.
+func (h *UpdateHandler) Restart(c *gin.Context) {
+	if busy := h.activeJob(); busy != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "更新进行中，等它结束再重启", "job": busy})
+		return
+	}
+	if h.restart == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "本次启动没有提供重启钩子，请由外部进程管理器重启服务"})
+		return
+	}
+	if needsRestart, _ := h.restartPending(); !needsRestart {
+		c.JSON(http.StatusConflict, gin.H{"error": "磁盘上的二进制与当前进程一致，没有待生效的版本", "reason": "nothing_pending"})
+		return
+	}
+	h.record(c, "update.restart", "started", "重启安装以运行磁盘上的新二进制", nil)
+	c.JSON(http.StatusAccepted, gin.H{"restarting": true})
+	time.AfterFunc(updateRestartDelay, h.restart)
+}
+
 // Job answers GET /api/system/update/job: the running job, or the most recent one, with
 // every progress line so far.
 func (h *UpdateHandler) Job(c *gin.Context) {
@@ -339,7 +400,7 @@ func (h *UpdateHandler) startJob(kind string, restart bool) (*updateJob, bool) {
 			h.mu.Unlock()
 			// Give the polling page one more chance to read the final state before the
 			// process it is watching goes away.
-			time.AfterFunc(2*time.Second, h.restart)
+			time.AfterFunc(updateRestartDelay, h.restart)
 			return
 		}
 		h.active = ""

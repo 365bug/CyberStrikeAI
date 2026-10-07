@@ -15,7 +15,8 @@ const ru = JSON.parse(fs.readFileSync('web/static/i18n/ru-RU.json', 'utf8'));
 // The only handlers this console is allowed to wire into markup.
 const HANDLES = ['startUpdateApply', 'checkForUpdates', 'rollbackUpdate',
     'updateRestartChoiceChanged', 'loadUpdateConsole',
-    'saveUpdateSource', 'previewAdoptSource', 'confirmAdoptSource'];
+    'saveUpdateSource', 'previewAdoptSource', 'confirmAdoptSource',
+    'startRestartNow', 'refreshUpdatePage'];
 
 // The envelope shape GET /api/system/update answers with, plus what the source endpoints return.
 const emptySource = { remote: '', remoteUrl: '', branch: '', configured: false };
@@ -82,12 +83,16 @@ function statusOf(patch) {
     return Object.assign({}, baseStatus, patch || {});
 }
 
-// The shape is the endpoint's own: {status, job, canRestart, source}. job is null until an update ran.
-function envelope(status, job, canRestart, source) {
+// The shape is the endpoint's own: {status, job, canRestart, supervised, needsRestart, source}.
+// job is null until an update ran.
+function envelope(status, job, canRestart, source, flags) {
     return {
         status: status || statusOf(),
         job: job === undefined ? null : job,
         canRestart: canRestart !== false,
+        supervised: !!(flags && flags.supervised),
+        needsRestart: !!(flags && flags.needsRestart),
+        binaryBuiltAt: (flags && flags.binaryBuiltAt) || '',
         source: source || emptySource,
     };
 }
@@ -175,7 +180,7 @@ function harness(options) {
     }
 
     const responses = Object.assign({
-        'GET /api/system/update': [{ status: 200, body: envelope(opts.status, opts.job, opts.canRestart, opts.source) }],
+        'GET /api/system/update': [{ status: 200, body: envelope(opts.status, opts.job, opts.canRestart, opts.source, opts.flags) }],
         'POST /api/system/update/check': [{ status: 200, body: { status: statusOf(opts.checkedStatus) } }],
         'POST /api/system/update/apply': [{ status: 202, body: { job_id: 'upd-1', state: 'running' } }],
         'GET /api/system/update/job': [{ status: 200, body: { job: opts.job || runningJob } }],
@@ -183,6 +188,13 @@ function harness(options) {
         'POST /api/system/update/source': [{ status: 200, body: { source: opts.source || emptySource } }],
         'POST /api/system/update/adopt': [{ status: 200, body: { plan: adoptPlan } }],
     }, opts.responses || {});
+
+    // The watchdog probes with plain fetch (the app's apiFetch turns a 401 into "logged out",
+    // and the whole point here is to read that 401 as "the new process is up"). Tests script
+    // the answers: 'ok' (old process still answering), 'unauthorized' (a new process without
+    // our session), 'down' (nothing is listening), 'bad gateway'.
+    const probeQueue = (opts.probes || ['ok']).slice();
+    const fetchProbes = [];
 
     const sandbox = {
         document: {
@@ -247,10 +259,17 @@ function harness(options) {
             // Resolved against the same zh-CN.json the browser loads, with {{var}} interpolated the
             // way i18next does. A key the dictionary does not carry comes back as the raw key, so a
             // missing translation fails the copy assertions instead of quietly painting a key name.
+            // i18next escapes interpolated values by default (including / -> &#x2F;); a call that
+            // asks for escapeValue:false gets the raw value, exactly like the browser would.
             t(key, o) {
                 const found = resolve(zh, key);
                 if (found === undefined) return key;
-                return found.replace(/\{\{(\w+)\}\}/g, (m, name) => (o && name in o ? String(o[name]) : m));
+                const escape = !(o && o.interpolation && o.interpolation.escapeValue === false);
+                const esc = (v) => escape ? String(v)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\//g, '&#x2F;')
+                    : String(v);
+                return found.replace(/\{\{(\w+)\}\}/g, (m, name) => (o && name in o ? esc(o[name]) : m));
             },
             showNotification(msg, type) { toasts.push({ msg, type }); },
             confirm(message) { confirms.push(message); return confirmAnswer; },
@@ -279,6 +298,31 @@ function harness(options) {
                 json: () => Promise.resolve(entry.body),
             });
         },
+        fetch(url, reqOpts = {}) {
+            fetchProbes.push({ url, opts: reqOpts });
+            const answer = probeQueue.length > 1 ? probeQueue.shift() : (probeQueue[0] || 'ok');
+            if (answer === 'down') {
+                return Promise.reject(new TypeError('Failed to fetch'));
+            }
+            if (answer === 'unauthorized') {
+                return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: 'unauthorized' }) });
+            }
+            if (answer === 'bad gateway') {
+                return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({
+                ok: true, status: 200,
+                json: () => Promise.resolve(envelope(opts.status, opts.job, opts.canRestart, opts.source, opts.flags)),
+            });
+        },
+        location: {
+            pathname: '/',
+            hash: '',
+            replaced: [],
+            reloads: 0,
+            replace(target) { this.replaced.push(target); },
+            reload() { this.reloads++; },
+        },
     };
     sandbox.window.document = sandbox.document;
     vm.createContext(sandbox);
@@ -286,14 +330,20 @@ function harness(options) {
     vm.runInContext(`
         this.api = {
             loadUpdateConsole, checkForUpdates, startUpdateApply, rollbackUpdate,
-            updateRestartChoiceChanged, pollUpdateJob, renderUpdateConsole, stopUpdatePolling
+            updateRestartChoiceChanged, pollUpdateJob, renderUpdateConsole, stopUpdatePolling,
+            startRestartNow
         };
         this.vars = {
             setBusy(v) { updateBusy = v; },
             getRestartChoice() { return updateRestartChoice; },
             getPollTimer() { return updatePollTimer; },
             getCheckDone() { return updateCheck.done; },
-            autoCheckDone() { return updateAutoCheckDone; }
+            autoCheckDone() { return updateAutoCheckDone; },
+            getWatchdogTimer() { return updateWatchdogTimer; },
+            getWatchdogSlow() { return updateWatchdogSlow; },
+            restartPending() { return updateRestartPending; },
+            // The deadline is wall-clock; tests move it into the past instead of sleeping 90s.
+            expireWatchdog() { updateWatchdogDeadline = Date.now() - 1; }
         };
     `, sandbox);
 
@@ -319,6 +369,8 @@ function harness(options) {
         sandbox, nodes, calls, toasts, confirms, timers, flush, runHandler, extractHandlers, responses,
         api: sandbox.api,
         vars: sandbox.vars,
+        location: sandbox.location,
+        probes: fetchProbes,
         // The deferred auto-check timer is inspected from this side: `timers` is the harness's own
         // array, not something the page's context can see.
         deferredTimers() { return timers.filter(t => t.deferred && !t.cleared).map(t => t.ms); },
@@ -642,13 +694,16 @@ test('local edits, a diverged tree and a clean-but-unchecked tree each block the
 });
 
 test('applying posts {"restart":false} and then reads the job every 1.5 seconds', async () => {
+    // This test is about the poll cadence and the final re-read, so the job finishes without
+    // having asked for a restart; the restart hand-off has its own test below.
+    const plainSucceededJob = Object.assign({}, succeededJob, { restartRequested: false });
     const h = await harness({
         responses: {
             'POST /api/system/update/apply': [{ status: 202, body: { job_id: 'upd-1', state: 'running' } }],
             'GET /api/system/update/job': [
                 { status: 200, body: { job: runningJob } },
                 { status: 200, body: { job: runningJob } },
-                { status: 200, body: { job: succeededJob } },
+                { status: 200, body: { job: plainSucceededJob } },
             ],
             'GET /api/system/update': [
                 { status: 200, body: envelope(statusOf(), null, true) },
@@ -657,7 +712,7 @@ test('applying posts {"restart":false} and then reads the job every 1.5 seconds'
                     body: envelope(statusOf({
                         updateAvailable: false, behind: 0, incoming: [], incomingTotal: 0,
                         commit: 'f9e8d7c',
-                    }), succeededJob, true),
+                    }), plainSucceededJob, true),
                 },
             ],
         },
@@ -705,7 +760,6 @@ test('applying posts {"restart":false} and then reads the job every 1.5 seconds'
     assert.match(html, /二进制已换新/);
     assert.match(html, /需要重启才会运行新版本/);
     assert.match(html, /3m12s/);
-    assert.match(html, /已要求在完成后退出/);
     const success = h.toasts.filter(t => t.type === 'success' && /更新完成/.test(t.msg)).pop();
     assert.ok(success, 'a finished update must be announced: ' + JSON.stringify(h.toasts));
     assert.match(success.msg, /f9e8d7c/, 'the toast names the commit the tree is on now');
@@ -750,7 +804,22 @@ test('the restart tick only appears when the process can actually be restarted',
         responses: { 'GET /api/system/update/job': [{ status: 200, body: { job: null } }] },
     });
     assert.match(on.html(), /<input type="checkbox" id="update-restart-choice"[^>]*onchange="updateRestartChoiceChanged\(this\.checked\)">/);
-    assert.ok(!/id="update-restart-choice" checked/.test(on.html()), 'the restart tick must default to off');
+    assert.ok(!/id="update-restart-choice" checked/.test(on.html()),
+        'with nothing supervising the process, the tick must default to off: ticking it would just stop the platform');
+
+    // The default follows the environment: launchd/systemd markers mean a restart is a
+    // restart, so one click should be the whole update.
+    const supervised = await harness({
+        canRestart: true,
+        flags: { supervised: true },
+        responses: { 'GET /api/system/update/job': [{ status: 200, body: { job: null } }] },
+    });
+    assert.match(supervised.html(), /id="update-restart-choice" checked/,
+        'detected supervision must pre-tick the box');
+    // Once the operator decides for themselves, the default stops second-guessing them.
+    supervised.sandbox.document.getElementById('update-restart-choice').checked = false;
+    supervised.fire('updateRestartChoiceChanged', { checked: false });
+    assert.ok(!/id="update-restart-choice" checked/.test(supervised.html()));
 
     on.calls.length = 0;
     on.fire('startUpdateApply');
@@ -1106,4 +1175,185 @@ test('adopt previews first, and confirming carries the counts into the dialog', 
     assert.ok(adopt, 'confirming must post to adopt');
     assert.deepEqual(JSON.parse(adopt.body), { confirm: true, restart: false });
     assert.ok(h.vars.getPollTimer(), 'the job it started must be polled');
+});
+
+// ---------------------------------------------------------------------------
+// 待生效的二进制：常驻横幅 + 立即重启 + 守侧重连。这一组是"忘勾重启也有救、重启后页面
+// 自己回来"的直接门禁——任何一处退化成"界面没反应"或"要手动刷新"，这里都会红。
+// ---------------------------------------------------------------------------
+
+test('a binary swap that never got a restart is announced with a way to activate it', async () => {
+    const h = await harness({ flags: { needsRestart: true, binaryBuiltAt: '2026-10-07T22:23:04+08:00' } });
+    assert.match(h.html(), /update-restart-banner/,
+        'the tree already says the new commit while the process still runs the old build; that must be impossible to miss');
+    assert.match(h.html(), /立即重启服务/);
+    assert.match(h.html(), /data-require-permission="update:apply"/);
+    assert.match(h.html(), /2026/, 'the banner names when the binary on disk was built');
+    assert.match(h.html(), /\d{1,2}\/\d{1,2}\/\d{4}/,
+        'the build time must render as a date: i18next escapes / unless the console turns that off');
+    assert.doesNotMatch(h.html(), /&#x2F;/, 'an interpolated value must not arrive pre-escaped');
+    assert.match(h.html(), /需要重启才会运行新版本/);
+    assert.match(source, /interpolation: \{ escapeValue: false \}/,
+        'the console has to stop i18next from HTML-escaping interpolated values before escapeHtml runs');
+
+    // A tree without a commit (not a git install) must still read like a sentence.
+    const noCommit = await harness({
+        flags: { needsRestart: true, binaryBuiltAt: '2026-10-07T22:23:04+08:00' },
+        status: statusOf({ installed: false, commit: '' }),
+    });
+    assert.doesNotMatch(noCommit.html(), /已更新到 -/, 'no commit must not read as "updated to -"');
+    assert.match(noCommit.html(), /磁盘上的二进制已换新/, 'the no-commit sentence must stand on its own');
+
+    const clean = await harness({});
+    assert.doesNotMatch(clean.html(), /update-restart-banner/,
+        'a process running the binary that is on disk has nothing to restart for');
+});
+
+test('restart now asks first, posts once, and hands the page to the watchdog', async () => {
+    const h = await harness({
+        flags: { needsRestart: true },
+        responses: { 'POST /api/system/update/restart': [{ status: 202, body: { restarting: true } }] },
+    });
+    h.setConfirm(false);
+    h.calls.length = 0;
+    h.fire('startRestartNow');
+    await h.flush();
+    assert.equal(h.confirms.length, 1, 'standing the service down is confirmed, never implied');
+    assert.match(h.confirms[0], /守护/, 'the confirm has to say what brings it back: ' + h.confirms[0]);
+    assert.deepEqual(h.calls, [], 'a cancelled restart must not post');
+    assert.equal(h.vars.getWatchdogTimer(), null, 'nothing may be watched for a restart nobody asked for');
+
+    h.setConfirm(true);
+    h.vars.setBusy(false);
+    h.calls.length = 0;
+    h.fire('startRestartNow');
+    await h.flush();
+    assert.deepEqual(h.calls.map(c => c.method + ' ' + c.url), ['POST /api/system/update/restart']);
+    assert.match(h.html(), /正在重启服务/, 'the console becomes the recovery view');
+    assert.ok(h.vars.getWatchdogTimer(), 'the watchdog must be armed once the stand-down is accepted');
+    // Exactly one watcher: the console is replaced by the recovery view, so there is no second
+    // button to press - and re-arming must not stack timers anyway.
+    assert.equal(h.timers.filter(t => !t.cleared && t.ms === 2000).length, 1);
+});
+
+test('a refused restart is reported with the server sentence and arms nothing', async () => {
+    const refusal = '磁盘上的二进制与当前进程一致，没有待生效的版本';
+    const h = await harness({
+        flags: { needsRestart: true },
+        responses: { 'POST /api/system/update/restart': [{ status: 409, body: { error: refusal } }] },
+    });
+    await h.api.startRestartNow();
+    await h.flush();
+    assert.match(h.toasts[h.toasts.length - 1].msg, /没有待生效的版本/, 'the server sentence is the one to show');
+    assert.equal(h.toasts[h.toasts.length - 1].type, 'error');
+    assert.equal(h.vars.getWatchdogTimer(), null, 'a refusal must not start watching for a boot that is not coming');
+    assert.equal(h.location.replaced.length, 0);
+});
+
+test('the watchdog reloads only when the NEW process answers, never while the old one still does', async () => {
+    const h = await harness({
+        flags: { needsRestart: true },
+        probes: ['ok', 'down', 'down', 'unauthorized'],
+        responses: { 'POST /api/system/update/restart': [{ status: 202, body: { restarting: true } }] },
+    });
+    await h.api.startRestartNow();
+    await h.flush();
+    assert.equal(h.location.replaced.length, 0);
+
+    await h.tick();
+    await h.flush();
+    assert.equal(h.location.replaced.length, 0, 'a 200 from the old process is not "it is back"');
+
+    await h.tick();
+    await h.flush();
+    await h.tick();
+    await h.flush();
+    assert.equal(h.location.replaced.length, 0, 'a dead service is not a recovered one');
+
+    await h.tick();
+    await h.flush();
+    assert.equal(h.location.replaced.length, 1,
+        'a 401 is the proof: only a new process can fail to know our session');
+    assert.match(h.location.replaced[0], /\?restarted=\d+/);
+    assert.match(h.location.replaced[0], /#system-update$/);
+    assert.equal(h.vars.getWatchdogTimer(), null, 'the page is leaving: the timer must be down');
+});
+
+test('a restart that does not come back says so instead of spinning forever', async () => {
+    const downCase = await harness({
+        flags: { needsRestart: true },
+        probes: ['down'],
+        responses: { 'POST /api/system/update/restart': [{ status: 202, body: { restarting: true } }] },
+    });
+    await downCase.api.startRestartNow();
+    await downCase.flush();
+    downCase.vars.expireWatchdog();
+    await downCase.tick();
+    await downCase.flush();
+    assert.match(downCase.html(), /没有守护进程|不会自己启动/, 'the down advice must name the supervision question');
+
+    const aliveCase = await harness({
+        flags: { needsRestart: true },
+        probes: ['ok'],
+        responses: { 'POST /api/system/update/restart': [{ status: 202, body: { restarting: true } }] },
+    });
+    await aliveCase.api.startRestartNow();
+    await aliveCase.flush();
+    aliveCase.vars.expireWatchdog();
+    await aliveCase.tick();
+    await aliveCase.flush();
+    assert.equal(aliveCase.vars.getWatchdogSlow(), 'running');
+    assert.match(aliveCase.html(), /仍在以旧进程应答|重启似乎没有发生/);
+});
+
+test('an update that asked for a restart hands the page to the watchdog instead of reporting a failed poll', async () => {
+    const h = await harness({
+        flags: { supervised: true },
+        responses: {
+            'GET /api/system/update/job': [
+                { status: 200, body: { job: runningJob } },
+                { status: 200, body: { job: succeededJob } },
+            ],
+        },
+        probes: ['unauthorized'],
+    });
+    // In a real browser the pre-ticked box makes this true; the harness reads the element.
+    h.sandbox.document.getElementById('update-restart-choice').checked = true;
+    h.fire('startUpdateApply');
+    await h.flush();
+    const apply = h.calls.find(c => c.url === '/api/system/update/apply');
+    assert.deepEqual(JSON.parse(apply.body), { restart: true },
+        'with launchd/systemd detected, one click is the whole update, restart included');
+
+    // The apply already polled once (running); this tick reads the finished job, which asked
+    // for the restart - that is the hand-off point.
+    await h.tick();
+    await h.flush();
+    assert.match(h.html(), /正在重启服务/, 'the succeeded-with-restart job hands over to the recovery view');
+    assert.deepEqual(h.toasts.filter(t => t.type === 'error'), [],
+        'the process going away by request is not a polling failure to complain about');
+    assert.ok(h.vars.restartPending());
+
+    await h.tick();
+    await h.flush();
+    assert.equal(h.location.replaced.length, 1);
+});
+
+test('a job poll that dies while the restart is in flight is not a failure', async () => {
+    // The realistic race: the process exits (and stops answering the job poll) before the
+    // page's next poll lands. That is the restart happening, not a broken console.
+    const h = await harness({
+        flags: { supervised: true },
+        rejects: ['GET /api/system/update/job'],
+        probes: ['unauthorized'],
+    });
+    h.sandbox.document.getElementById('update-restart-choice').checked = true;
+    h.fire('startUpdateApply');
+    await h.flush();
+    assert.match(h.html(), /正在重启服务/, 'a dead poll while a restart is requested means the restart is in flight');
+    assert.deepEqual(h.toasts.filter(t => t.type === 'error'), [], 'and it must not be toasted as a failure');
+
+    await h.tick();
+    await h.flush();
+    assert.equal(h.location.replaced.length, 1);
 });

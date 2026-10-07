@@ -5,8 +5,11 @@
 //   2) 提示只念真实 HTTP 结果，而且只用平台确实存在的 showNotification；没有就什么都不做。
 //   3) 服务端来的字符串进 HTML 一律 escapeHtml，进属性一律 escapeAttr。
 const UPDATE_POLL_INTERVAL_MS = 1500;
+// 重启守侧：进程退出到新进程接客之间的间隙，页面试探的节奏与放弃前的耐心。
+const UPDATE_WATCHDOG_INTERVAL_MS = 2000;
+const UPDATE_WATCHDOG_TIMEOUT_MS = 90000;
 
-// withUpdateBusy 按动作挑错误文案的前缀，四个 key 都必须在三份语言里存在。
+// withUpdateBusy 按动作挑错误文案的前缀，所有 key 都必须在三份语言里存在。
 const UPDATE_FAILURE_KEYS = {
     check: 'checkFailed',
     apply: 'applyFailed',
@@ -14,14 +17,20 @@ const UPDATE_FAILURE_KEYS = {
     load: 'loadFailed',
     source: 'sourceSaveFailed',
     adopt: 'adoptFailed',
+    restart: 'restartFailed',
 };
 
-let updateConsoleState = null;   // GET /api/system/update 的整包：{status, job, canRestart}
+let updateConsoleState = null;   // GET /api/system/update 的整包：{status, job, canRestart, supervised, needsRestart}
 let updateCheck = { done: false, error: '' };
-let updateBusy = false;          // 页面自己发着的动作请求（检查 / 启动更新 / 回滚）
+let updateBusy = false;          // 页面自己发着的动作请求（检查 / 启动更新 / 回滚 / 重启）
 let updateChecking = false;      // 只影响「检查更新」按钮的措辞
 let updatePollTimer = null;
-let updateRestartChoice = false; // 勾选框要在轮询重绘之后仍然是勾着的
+let updateRestartChoice = true;  // 勾选框要在轮询重绘之后仍然是勾着的；默认值跟随 supervised
+let updateRestartChoiceSet = false; // 操作员本次会话手动改过之后，默认值不再顶掉他的选择
+let updateRestartPending = false;   // 已请求重启：进程退出/新进程接客就在眼前
+let updateWatchdogTimer = null;     // 重启守侧自己的定时器，跟任务进度轮询互不干扰
+let updateWatchdogDeadline = 0;
+let updateWatchdogSlow = null;      // null=还没超时；'running'=仍由旧进程应答；'down'=服务没回来
 let updateAutoCheckDone = false; // 每个会话只自动查一次远端，不每次重绘都去打扰
 let updateSourceDraft = null;    // 编辑中的更新源；null=还贴着服务端保存的值
 let updateSourceError = '';      // 最近一次保存/接入失败的原因，画在区块里
@@ -29,7 +38,12 @@ let updateAdoptPlan = null;      // 预览回来的接入计划；确认后清�
 
 function updateT(key, opts) {
     const k = 'update.' + key;
-    return typeof window.t === 'function' ? window.t(k, opts) : k;
+    if (typeof window.t !== 'function') return k;
+    // i18next 默认把插值里的 / " ' 也转成 HTML 实体；控制台的结果要么进 escapeHtml（渲染），
+    // 要么进 confirm（纯文本），两种去向都不需要它先转义——开着反而会把日期、分支名里的 /
+    // 显示成 &#x2F;（实测：devtree/deploy/... 在确认框里就是这么显示的）。
+    const merged = Object.assign({ interpolation: { escapeValue: false } }, opts || {});
+    return window.t(k, merged);
 }
 
 function updateSourceOf() {
@@ -134,9 +148,20 @@ async function fetchUpdateStatus() {
         status: r.data.status || {},
         job: r.data.job || null,
         canRestart: !!r.data.canRestart,
+        supervised: !!r.data.supervised,
+        needsRestart: !!r.data.needsRestart,
+        binaryBuiltAt: r.data.binaryBuiltAt || '',
         source: r.data.source || { remote: '', remoteUrl: '', branch: '', configured: false },
     };
+    noteRestartDefault();
     return updateConsoleState;
+}
+
+// 勾选框的默认值：有守护（launchd/systemd 的启动标记）才默认勾上——没人守护时默认勾上
+// 等于"一键把服务点停"。操作员自己动过勾选框之后，服务端的值不再覆盖他的选择。
+function noteRestartDefault() {
+    if (updateRestartChoiceSet) return;
+    updateRestartChoice = !!(updateConsoleState && updateConsoleState.supervised);
 }
 
 // notify 只在平台真的载了 showNotification 时才动。它绝不能成为"操作看起来失败"的原因：
@@ -179,8 +204,14 @@ async function withUpdateBusy(fn, label) {
 
 async function loadUpdateConsole() {
     stopUpdatePolling();
+    // 重启已经发起：控制台让位给自恢复视图，不再去读一个正在退出的服务。
+    if (updateRestartPending) {
+        startUpdateWatchdog();
+        return;
+    }
     resetUpdateCheck();
-    updateRestartChoice = false;
+    updateRestartChoiceSet = false;
+    updateRestartChoice = true; // 之后由 noteRestartDefault 按 supervised 修正
     const el = document.getElementById('update-console');
     if (!el) return;
     el.innerHTML = '<div class="empty-state">' + escapeHtml(updateT('loading')) + '</div>';
@@ -208,6 +239,63 @@ function stopUpdatePolling() {
     updatePollTimer = null;
 }
 
+// ---------------------------------------------------------------------------
+// 重启守侧：请求重启之后，盯着"新进程是否已经接客"，接上了就整页刷新
+// ---------------------------------------------------------------------------
+
+// 只认一个新进程已经应答的事实：会话只活在旧进程内存里，新进程对旧令牌只会回 401。
+// 200 说明还在跟旧进程说话（还没退出），连不上/502 说明正在退出或还没起来——都继续等。
+// 离开控制台就静默停表：不把已经走开的用户从别的页面拽回更新页。
+let updateWatchdogProbing = false;
+
+async function watchdogProbe() {
+    if (!isUpdateConsoleActive()) {
+        stopUpdateWatchdog();
+        return;
+    }
+    if (updateWatchdogProbing) return;
+    updateWatchdogProbing = true;
+    let status = 0;
+    try {
+        const resp = await fetch('/api/system/update', {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+        });
+        status = resp.status;
+    } catch (err) {
+        status = 0;
+    } finally {
+        updateWatchdogProbing = false;
+    }
+    if (status === 401) {
+        // 新进程已经接客、且不认我们的会话：整页刷新落到新版本，带 hash 回到本页。
+        // 先停表：页面马上要整体换掉，定时器不该再有第二次动作。
+        stopUpdateWatchdog();
+        location.replace(location.pathname + '?restarted=' + Date.now() + '#system-update');
+        return;
+    }
+    if (updateWatchdogSlow === null && Date.now() > updateWatchdogDeadline) {
+        updateWatchdogSlow = status === 200 ? 'running' : 'down';
+        renderUpdateWatchdog();
+    }
+}
+
+function startUpdateWatchdog() {
+    if (updateWatchdogTimer) return;
+    updateRestartPending = true;
+    updateWatchdogSlow = null;
+    updateWatchdogDeadline = Date.now() + UPDATE_WATCHDOG_TIMEOUT_MS;
+    renderUpdateWatchdog();
+    updateWatchdogTimer = setInterval(watchdogProbe, UPDATE_WATCHDOG_INTERVAL_MS);
+}
+
+function stopUpdateWatchdog() {
+    if (updateWatchdogTimer) clearInterval(updateWatchdogTimer);
+    updateWatchdogTimer = null;
+}
+
 async function pollUpdateJob() {
     if (!isUpdateConsoleActive()) {
         // 页面已经切走了。router.js 只在进入时调 initPage，离开时没人喊，
@@ -215,9 +303,21 @@ async function pollUpdateJob() {
         stopUpdatePolling();
         return;
     }
-    const r = await runUpdateRequest('GET', '/api/system/update/job');
+    // 传输层死亡（连接被拒、进程已经退出）是 reject 而不是带状态码的回应：两者在这里
+    // 归一——重启进行中它就是"进程退了"，否则才是要播报的读取失败。
+    let r;
+    try {
+        r = await runUpdateRequest('GET', '/api/system/update/job');
+    } catch (err) {
+        r = { ok: false, error: err && err.message ? err.message : String(err) };
+    }
     if (!r.ok) {
         stopUpdatePolling();
+        if (updateRestartPending) {
+            // 进程按请求退了：这不是"读进度失败"，是重启进入了下一幕。
+            startUpdateWatchdog();
+            return;
+        }
         notify(updateT('jobPollFailed', { reason: r.error }), 'error');
         return;
     }
@@ -226,6 +326,16 @@ async function pollUpdateJob() {
     renderUpdateConsole();
     if (job && job.state !== 'running') {
         stopUpdatePolling();
+        if (job.state === 'succeeded' && job.restartRequested) {
+            // 进程马上要让位给新二进制：先把结论播报掉，再进自恢复视图；不再回头
+            // 去读一个即将消失的服务（reportFinishedJob 会去读，这里跳过它）。
+            const result = job.result || null;
+            const tail = result && result.toCommit ? ' ' + result.fromCommit + ' → ' + result.toCommit : '';
+            notify(updateT('jobDoneToast') + tail, 'success');
+            startUpdateWatchdog();
+            return;
+        }
+        updateRestartPending = false;
         reportFinishedJob(job);
     }
 }
@@ -311,6 +421,7 @@ function updateApplyBlockers(status, job) {
 
 function updateRestartChoiceChanged(checked) {
     updateRestartChoice = !!checked;
+    updateRestartChoiceSet = true; // 操作员自己决定过之后，服务端的默认值不再覆盖他
     renderUpdateConsole();
 }
 
@@ -355,10 +466,26 @@ async function startUpdateApply() {
         }
         if (!r.ok) throw new Error(r.error);
         resetUpdateCheck();
+        if (restart) updateRestartPending = true;
         startUpdatePolling();
         notify(updateT('applyAccepted', { id: r.data.job_id || '-' }), 'success');
         await pollUpdateJob();
     }, 'apply');
+}
+
+// 「立即重启服务」：把磁盘上已经换好的二进制变成正在应答的那一个。服务端只允许在
+// 确实有待生效的版本时放行——没有可生效的东西就点停服务，那不叫重启。
+async function startRestartNow() {
+    if (updateBusy) return;
+    if (!window.confirm(updateT('restartNowConfirm'))) return;
+
+    await withUpdateBusy(async () => {
+        const r = await runUpdateRequest('POST', '/api/system/update/restart');
+        if (!r.ok) throw new Error(r.error);
+        stopUpdatePolling();
+        notify(updateT('restartRequestedToast'), 'info');
+        startUpdateWatchdog();
+    }, 'restart');
 }
 
 async function rollbackUpdate() {
@@ -448,6 +575,7 @@ async function confirmAdoptSource() {
         if (!r.ok) throw new Error(r.error);
         updateAdoptPlan = null;
         resetUpdateCheck();
+        if (restart) updateRestartPending = true;
         startUpdatePolling();
         notify(updateT('adoptAccepted', { id: r.data.job_id || '-' }), 'success');
         await pollUpdateJob();
@@ -566,8 +694,11 @@ function renderUpdateInstallBody(status) {
             status.canBuild ? (status.goToolchain || '') : (status.goToolchain || updateT('toolchainMissingHint'))),
         updateMark(!!status.hasBinary, 'binaryPresent', 'binaryMissing'),
         updateMark(!!status.hasRollback, 'rollbackPresent', 'rollbackMissing'),
-    ].join('');
-    return '<div class="update-facts">' + facts + '</div><div class="update-marks">' + marks + '</div>';
+    ];
+    if (updateConsoleState && updateConsoleState.needsRestart) {
+        marks.push('<span class="update-chip update-chip-warn">' + escapeHtml(updateT('restartNeeded')) + '</span>');
+    }
+    return '<div class="update-facts">' + facts + '</div><div class="update-marks">' + marks.join('') + '</div>';
 }
 
 function renderUpdateRemoteBody(status) {
@@ -794,6 +925,51 @@ function renderUpdateRollbackBody(status) {
         'onclick="rollbackUpdate()">' + escapeHtml(updateT('rollbackBtn')) + '</button></div>';
 }
 
+// 待生效横幅：磁盘上的二进制已经不是这个进程了（更新/回滚跑了但没重启，或 CLI 换过），
+// 这里给出一个"现在就让它生效"的出口——否则忘勾一次就只剩命令行一条路。
+function formatBinaryBuiltAt() {
+    const raw = (updateConsoleState && updateConsoleState.binaryBuiltAt) || '';
+    if (!raw) return '-';
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? raw : d.toLocaleString();
+}
+
+function renderRestartBanner() {
+    const status = updateStatusOf();
+    const commit = status.commit || '';
+    const text = updateT(commit ? 'restartBanner' : 'restartBannerNoCommit', {
+        commit: commit || '-',
+        builtAt: formatBinaryBuiltAt(),
+    });
+    return '<div class="update-restart-banner">' +
+        '<div class="update-restart-banner-text">' + escapeHtml(text) + '</div>' +
+        '<button class="btn-primary update-restart-btn" data-require-permission="update:apply" onclick="startRestartNow()">' +
+        escapeHtml(updateT('restartNowBtn')) + '</button></div>';
+}
+
+// 自恢复视图：重启请求发出后控制台画的就是它，直到新进程应答触发整页刷新。
+function renderUpdateWatchdog() {
+    const el = document.getElementById('update-console');
+    if (!el) return;
+    const parts = ['<div class="update-overlay">',
+        '<div class="update-overlay-spinner" aria-hidden="true"></div>',
+        '<div class="update-overlay-title">' + escapeHtml(updateT('restartOverlayTitle')) + '</div>',
+        '<div class="update-overlay-body">' + escapeHtml(updateT('restartOverlayBody')) + '</div>'];
+    if (updateWatchdogSlow) {
+        parts.push('<div class="update-overlay-slow">' + escapeHtml(updateT(
+            updateWatchdogSlow === 'running' ? 'restartOverlaySlowRunning' : 'restartOverlaySlowDown')) + '</div>');
+    }
+    parts.push('<div class="update-overlay-actions">' +
+        '<button class="btn-secondary" type="button" onclick="refreshUpdatePage()">' +
+        escapeHtml(updateT('restartOverlayRefresh')) + '</button></div>');
+    parts.push('</div>');
+    el.innerHTML = parts.join('');
+}
+
+function refreshUpdatePage() {
+    location.reload();
+}
+
 function renderUpdateConsole() {
     const el = document.getElementById('update-console');
     if (!el || !updateConsoleState) return;
@@ -801,6 +977,7 @@ function renderUpdateConsole() {
     const job = updateJobOf();
 
     const parts = [];
+    if (updateConsoleState.needsRestart) parts.push(renderRestartBanner());
     parts.push(updateSection(updateT('installTitle'), renderUpdateInstallBody(status)));
     parts.push(updateSection(updateT('sourceTitle'), renderUpdateSourceBody(status)));
     parts.push(updateSection(updateT('remoteTitle'), renderUpdateRemoteBody(status)));
@@ -817,6 +994,8 @@ function renderUpdateConsole() {
 window.loadUpdateConsole = loadUpdateConsole;
 window.checkForUpdates = checkForUpdates;
 window.startUpdateApply = startUpdateApply;
+window.startRestartNow = startRestartNow;
+window.refreshUpdatePage = refreshUpdatePage;
 window.rollbackUpdate = rollbackUpdate;
 window.updateRestartChoiceChanged = updateRestartChoiceChanged;
 window.stopUpdatePolling = stopUpdatePolling;

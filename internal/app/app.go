@@ -617,7 +617,7 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	updateHandler := handler.NewUpdateHandler(configDir, log.Logger, auditSvc, func() {
 		app.Shutdown()
 		os.Exit(0)
-	})
+	}, configHandler.UpdateSource, configHandler.SetUpdateSource)
 
 	// 设置路由（使用 App 实例以便动态获取 handler）
 	setupRoutes(
@@ -1134,12 +1134,14 @@ func setupRoutes(
 		protected.POST("/config/test-vision", configHandler.TestVision)
 		protected.POST("/config/list-models", configHandler.ListModels)
 
-		// 系统更新（保持本安装自身源码最新：查看、检查、应用、进度、回滚）
+		// 系统更新（保持本安装自身源码最新：查看、检查、应用、进度、回滚、接入、更新源）
 		protected.GET("/system/update", updateHandler.GetStatus)
 		protected.GET("/system/update/job", updateHandler.Job)
 		protected.POST("/system/update/check", updateHandler.Check)
 		protected.POST("/system/update/apply", updateHandler.Apply)
 		protected.POST("/system/update/rollback", updateHandler.Rollback)
+		protected.POST("/system/update/adopt", updateHandler.Adopt)
+		protected.POST("/system/update/source", updateHandler.SaveSource)
 
 		// 系统设置 - 终端（执行命令，提高运维效率）
 		protected.POST("/terminal/run", terminalHandler.RunCommand)

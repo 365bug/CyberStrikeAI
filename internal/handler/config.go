@@ -1912,6 +1912,26 @@ func (h *ConfigHandler) ApplyConfig(c *gin.Context) {
 	})
 }
 
+// SetUpdateSource 记录一键更新的更新源（remote 与 remote_url 二选一，另有可选 branch）。
+// 走与其他设置相同的写入路径：备份旧文件、按 YAML 文档只改 update 段、原子落盘。
+func (h *ConfigHandler) SetUpdateSource(remote, remoteURL, branch string) error {
+	h.mu.Lock()
+	h.config.Update = config.UpdateConfig{
+		Remote:    strings.TrimSpace(remote),
+		RemoteURL: strings.TrimSpace(remoteURL),
+		Branch:    strings.TrimSpace(branch),
+	}
+	h.mu.Unlock()
+	return h.saveConfig()
+}
+
+// UpdateSource 读当前生效的更新源（加读锁；更新处理器每次请求现读，保存后立即生效）。
+func (h *ConfigHandler) UpdateSource() (string, string, string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.config.Update.Remote, h.config.Update.RemoteURL, h.config.Update.Branch
+}
+
 // saveConfig 保存配置到文件
 func (h *ConfigHandler) saveConfig() error {
 	configFileMu.Lock()
@@ -1938,6 +1958,7 @@ func (h *ConfigHandler) saveConfig() error {
 	updateAIConfig(root, h.config.AI)
 	removeKeyFromMap(root.Content[0], "openai")
 	updateVisionConfig(root, h.config.Vision)
+	updateUpdateSourceConfig(root, h.config.Update)
 	updateFOFAConfig(root, h.config.FOFA)
 	updateSpaceSearchConfig(root, "zoomeye", h.config.ZoomEye)
 	updateSpaceSearchConfig(root, "quake", h.config.Quake)
@@ -2063,6 +2084,35 @@ func updateMCPConfig(doc *yaml.Node, cfg config.MCPConfig) {
 	setBoolInMap(mcpNode, "enabled", cfg.Enabled)
 	setStringInMap(mcpNode, "host", cfg.Host)
 	setIntInMap(mcpNode, "port", cfg.Port)
+}
+
+// updateUpdateSourceConfig 写入一键更新的更新源（update 段）。三项全空时把整段删掉，
+// 而不是留下一个空的 update: 块——"没有配置"应当就是文件里没有这一段。
+func updateUpdateSourceConfig(doc *yaml.Node, cfg config.UpdateConfig) {
+	root := doc.Content[0]
+	remote := strings.TrimSpace(cfg.Remote)
+	remoteURL := strings.TrimSpace(cfg.RemoteURL)
+	branch := strings.TrimSpace(cfg.Branch)
+	if remote == "" && remoteURL == "" && branch == "" {
+		removeKeyFromMap(root, "update")
+		return
+	}
+	node := ensureMap(root, "update")
+	if remote != "" {
+		setStringInMap(node, "remote", remote)
+	} else {
+		removeKeyFromMap(node, "remote")
+	}
+	if remoteURL != "" {
+		setStringInMap(node, "remote_url", remoteURL)
+	} else {
+		removeKeyFromMap(node, "remote_url")
+	}
+	if branch != "" {
+		setStringInMap(node, "branch", branch)
+	} else {
+		removeKeyFromMap(node, "branch")
+	}
 }
 
 func updateVisionConfig(doc *yaml.Node, cfg config.VisionConfig) {

@@ -16,14 +16,21 @@ import (
 // the length of a compile, and refusals that stay distinguishable from accidents.
 
 func newUpdateRouter(root string, restart func()) (*gin.Engine, *UpdateHandler) {
+	return newUpdateRouterWithSource(root, restart, nil, nil)
+}
+
+func newUpdateRouterWithSource(root string, restart func(),
+	source func() (string, string, string), save func(string, string, string) error) (*gin.Engine, *UpdateHandler) {
 	gin.SetMode(gin.TestMode)
-	h := NewUpdateHandler(root, nil, nil, restart)
+	h := NewUpdateHandler(root, nil, nil, restart, source, save)
 	router := gin.New()
 	router.GET("/api/system/update", h.GetStatus)
 	router.GET("/api/system/update/job", h.Job)
 	router.POST("/api/system/update/check", h.Check)
 	router.POST("/api/system/update/apply", h.Apply)
 	router.POST("/api/system/update/rollback", h.Rollback)
+	router.POST("/api/system/update/adopt", h.Adopt)
+	router.POST("/api/system/update/source", h.SaveSource)
 	return router, h
 }
 
@@ -164,5 +171,76 @@ func TestUpdateRollbackWithoutARecordedUpdateIsAConflict(t *testing.T) {
 	}
 	if body["reason"] != "no_state" {
 		t.Errorf("reason = %v, want no_state so the page can say there is nothing to undo", body["reason"])
+	}
+}
+
+func TestUpdateSourceSaveValidatesBeforeWriting(t *testing.T) {
+	var saved []string
+	router, _ := newUpdateRouterWithSource(t.TempDir(), nil,
+		func() (string, string, string) { return "", "", "" },
+		func(r, u, b string) error { saved = append(saved, r+"|"+u+"|"+b); return nil })
+
+	// A name and an address are two ways to say the same thing; guessing which one the
+	// operator meant is worse than asking again.
+	w := doUpdate(router, http.MethodPost, "/api/system/update/source", `{"remote":"origin","remoteUrl":"https://github.com/x/y.git"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s, want 400 for remote+remoteUrl together", w.Code, w.Body)
+	}
+	// git's ext:: transport runs commands; it must never reach the config.
+	w = doUpdate(router, http.MethodPost, "/api/system/update/source", `{"remoteUrl":"ext::sh -c true"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s, want 400 for an ext:: address", w.Code, w.Body)
+	}
+	if len(saved) != 0 {
+		t.Fatalf("a refused save must not reach the config layer: %v", saved)
+	}
+
+	// A valid save is trimmed and lands in the config layer as three values.
+	w = doUpdate(router, http.MethodPost, "/api/system/update/source", `{"remoteUrl":" https://github.com/Sycun/CyberStrikeAI.git ","branch":"main"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", w.Code, w.Body)
+	}
+	if len(saved) != 1 || saved[0] != "|https://github.com/Sycun/CyberStrikeAI.git|main" {
+		t.Fatalf("saved = %v, want the trimmed address and branch", saved)
+	}
+}
+
+func TestUpdateStatusCarriesTheConfiguredSource(t *testing.T) {
+	router, _ := newUpdateRouterWithSource(t.TempDir(), nil,
+		func() (string, string, string) { return "", "https://github.com/Sycun/CyberStrikeAI.git", "main" }, nil)
+
+	w := doUpdate(router, http.MethodGet, "/api/system/update", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	var body struct {
+		Source struct {
+			Remote     string `json:"remote"`
+			RemoteURL  string `json:"remoteUrl"`
+			Branch     string `json:"branch"`
+			Configured bool   `json:"configured"`
+		} `json:"source"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Source.Configured || body.Source.RemoteURL != "https://github.com/Sycun/CyberStrikeAI.git" || body.Source.Branch != "main" {
+		t.Fatalf("source = %+v, want the configured address and branch", body.Source)
+	}
+}
+
+func TestUpdateAdoptPreviewRefusesWithoutASource(t *testing.T) {
+	router, _ := newUpdateRouter(t.TempDir(), nil)
+
+	w := doUpdate(router, http.MethodPost, "/api/system/update/adopt", `{}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s, want 400", w.Code, w.Body)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["reason"] != "no_source" {
+		t.Fatalf("reason = %v, want no_source so the page can say what is missing", body["reason"])
 	}
 }

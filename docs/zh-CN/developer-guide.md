@@ -54,7 +54,7 @@ go run ./cmd/server --config config.yaml
 
 | 入口 | 怎么用 |
 |---|---|
-| 控制台 | 「平台管理 → 一键更新」（`#system-update`）。打开页面只读本机状态、不联网；点「检查更新」才去 fetch；「一键更新」发起任务并轮询进度；页面另有"更新完成后退出进程"勾选与回滚按钮 |
+| 控制台 | 「系统设置 → 一键更新」（`#system-update` 老深链仍可用）。打开这一区只读本机状态、不联网；点「检查更新」才去 fetch；「一键更新」发起任务并轮询进度；页面另有"更新完成后退出进程"勾选与回滚按钮 |
 | REST | `GET /api/system/update`（磁盘现状，不联网）、`POST /api/system/update/check`（fetch 后报告差集）、`POST /api/system/update/apply`（`202` 返回 `job_id`，用 `GET /api/system/update/job` 轮询）、`POST /api/system/update/rollback` |
 | CLI | `./cyberstrike-ai -check-update`、`./cyberstrike-ai -update`、`./cyberstrike-ai -update-rollback`。安装目录 = `--config` 所在目录，未给 `--config` 时是当前目录 |
 

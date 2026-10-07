@@ -46718,7 +46718,7 @@ html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
 
 
 /* ---------------------------------------------------------------------------
-   一键更新控制台（system-update）：这里说的每一句状态都要能被眼睛分区——
+   一键更新控制台（系统设置页的 settings-section-update 分区）：这里说的每一句状态都要能被眼睛分区——
    本机事实、远端比较、能不能点、正在跑的进度、以及跑完的结论。
    ok/warn/danger 三色是给"说谎"留的对照组：查不了必须是 warn/danger，不能长得像 ok。
    --------------------------------------------------------------------------- */
@@ -46726,6 +46726,15 @@ html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
     display: flex;
     flex-direction: column;
     gap: 20px;
+}
+
+/* 分区标题行：标题在左、刷新在右；窄屏放不下就换行，别把标题压扁 */
+.update-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .update-intro {

@@ -202,7 +202,6 @@
     "rollbackItems": "未能回滚的文件"
   },
   "nav": {
-    "systemUpdate": "一键更新",
     "security": "安全防护",
     "toolGuard": "调用拦截",
     "dashboard": "仪表盘",
@@ -1908,6 +1907,7 @@
       "rbac": "平台权限",
       "audit": "日志审计",
       "storage": "存储清理",
+      "update": "一键更新",
       "infocollect": "资产管理"
     },
     "infocollect": {

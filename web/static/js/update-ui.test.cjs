@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const source = fs.readFileSync('web/static/js/update.js', 'utf8');
 const template = fs.readFileSync('web/templates/index.html', 'utf8');
 const router = fs.readFileSync('web/static/js/router.js', 'utf8');
+const settings = fs.readFileSync('web/static/js/settings.js', 'utf8');
 const sheet = fs.readFileSync('web/static/css/style.css', 'utf8');
 const zh = JSON.parse(fs.readFileSync('web/static/i18n/zh-CN.json', 'utf8'));
 const en = JSON.parse(fs.readFileSync('web/static/i18n/en-US.json', 'utf8'));
@@ -160,8 +161,12 @@ function harness(options) {
             checked: false,
             insertAdjacentHTML(_pos, html) { this.innerHTML = html + this.innerHTML; },
         };
+        // 控制台住在系统设置页的「一键更新」分区里：页面和分区都得是 active，它才算在前台。
+        let seeded = ['page'];
+        if (id === 'page-settings') seeded = ['page'].concat(active ? ['active'] : []);
+        if (id === 'settings-section-update') seeded = ['settings-section-content'].concat(active ? ['active'] : []);
         el.classList = {
-            _set: new Set(id === 'page-system-update' && active ? ['page', 'active'] : ['page']),
+            _set: new Set(seeded),
             contains(c) { return this._set.has(c); },
             add(c) { this._set.add(c); },
             remove(c) { this._set.delete(c); },
@@ -325,11 +330,15 @@ function harness(options) {
             if (!text) throw new Error('handler ' + name + ' is not present in the rendered markup');
             return runHandler(text, thisArg);
         },
-        // Flipping the router's page-active class is all that leaving a page means for this console.
+        // Flipping the router's active classes (the settings page and its update section) is all
+        // that leaving means for this console.
         setActive(v) {
             active = v;
-            const node = nodes.get('page-system-update');
-            if (v) node.classList.add('active'); else node.classList.remove('active');
+            ['page-settings', 'settings-section-update'].forEach(id => {
+                const node = nodes.get(id);
+                if (!node) return;
+                if (v) node.classList.add('active'); else node.classList.remove('active');
+            });
         },
         setConfirm(v) { confirmAnswer = v; },
         liveTimers() { return timers.filter(t => !t.cleared && !t.deferred); },
@@ -343,38 +352,64 @@ function harness(options) {
     return Promise.resolve(sandbox.api.loadUpdateConsole()).then(flush).then(() => h);
 }
 
-test('the page is wired in everywhere a page has to be registered', () => {
-    assert.match(template, /<div class="nav-item" data-page="system-update">/);
-    assert.match(template, /<div id="page-system-update" class="page">/);
+test('the console lives inside the settings page as its own section', () => {
+    // The entry is no longer a page of its own: it is one section of 系统设置, so the main sidebar
+    // must not advertise a sibling item for it any more.
+    assert.doesNotMatch(template, /data-page="system-update"/,
+        'the standalone sidebar entry must be gone: the console is a settings section now');
+    assert.doesNotMatch(template, /id="page-system-update"/,
+        'the standalone page must be gone: its content moved into 系统设置');
+
+    const settingsNavItem = template.indexOf('<div class="settings-nav-item" data-section="update" data-require-permission="update:read" onclick="switchSettingsSection(\'update\')">');
+    assert.ok(settingsNavItem > -1, 'the settings menu must carry the 一键更新 entry');
+    assert.match(template, /<span data-i18n="settings\.nav\.update">一键更新<\/span>/);
+    const storageItem = template.indexOf('data-section="storage"');
+    assert.ok(storageItem > -1 && storageItem < settingsNavItem, 'the entry must follow 存储清理 in the settings menu');
+
+    // The console markup sits inside page-settings, wrapped in its own section.
+    const pageSettings = template.indexOf('<div id="page-settings" class="page">');
+    const section = template.indexOf('<div id="settings-section-update" class="settings-section-content" data-require-permission="update:read">');
+    const nextPage = template.indexOf('<!-- 平台权限页面 -->');
+    assert.ok(pageSettings > -1 && section > pageSettings && nextPage > section,
+        'settings-section-update must live inside page-settings');
+    assert.match(template, /id="settings-section-update"[\s\S]{0,700}?id="update-console"/);
     assert.match(template, /id="update-console"/);
     assert.match(template, /<script src="\/static\/js\/update\.js\?v=\{\{\.Version\}\}"><\/script>/);
+    assert.match(template, /<div class="settings-section-header update-section-head">/);
+    assert.match(template, /<h3 data-i18n="update\.title">/);
 
-    const group = template.indexOf('<span data-i18n="navGroups.administration">平台管理</span>');
-    const rbac = template.indexOf('<div class="nav-item" data-page="platform-rbac">');
-    const update = template.indexOf('<div class="nav-item" data-page="system-update">');
-    const settings = template.indexOf('<div class="nav-item" data-page="settings">');
-    assert.ok(group > -1 && rbac > group && update > rbac && settings > update,
-        'the nav item must sit in 平台管理, after 平台权限 and before 系统设置');
-    assert.match(template, /data-page="system-update"[\s\S]{0,400}?onclick="switchPage\('system-update'\)"/);
-    assert.match(template, /<div class="nav-item-content" data-title="一键更新" onclick="switchPage\('system-update'\)" data-i18n="nav\.systemUpdate" data-i18n-attr="data-title"/);
-    assert.match(template, /<div class="page-header">\s*\n\s*<h2 data-i18n="update\.title">/);
+    // Both hash entry points carry the alias, and the retired page id is gone from the whitelists:
+    // #system-update has to land on 系统设置 with its update section selected.
+    const aliases = [...router.matchAll(/const settingsSection = pageId === 'system-update' \? 'update' : '';/g)];
+    assert.equal(aliases.length, 2, 'both hash parsers must normalize #system-update into the settings section');
+    const selects = [...router.matchAll(/if \(settingsSection && typeof switchSettingsSection === 'function'\) \{[\s\S]{0,80}?switchSettingsSection\(settingsSection\);/g)];
+    assert.equal(selects.length, 2, 'both hash paths must open the update section after switching the page');
+    const lists = router.split('\n').filter(l => l.includes("['dashboard'") && l.includes("'settings'"));
+    assert.equal(lists.length, 2, 'settings must stay in both router page lists');
+    assert.ok(lists.every(l => !l.includes("'system-update'")), 'no whitelist may still name the retired page id');
+    assert.doesNotMatch(router, /case 'system-update':/, 'the page init case must be gone with the page');
+    // Leaving the settings page stops the poller; switching sections within it is settings.js's job.
+    assert.match(router, /if \(pageId !== 'settings' && typeof stopUpdatePolling === 'function'\)/);
+    // Coming back to the settings page while the update section is still selected must re-read the
+    // install state and re-arm the poller: leaving the page stopped it, and a frozen progress
+    // read is exactly the "nothing is happening" picture an operator must never be shown.
+    assert.match(router, /case 'settings':[\s\S]{0,450}?getElementById\('settings-section-update'\)[\s\S]{0,250}?loadUpdateConsole\(\)/);
 
-    // Registered in the router twice on purpose: the hash whitelist on boot, and the one used when
-    // a page builds its own hash. A page missing from either is silently unreachable.
-    const lists = router.split('\n').filter(l => l.includes("['dashboard'") && l.includes("'system-update'"));
-    assert.equal(lists.length, 2, 'system-update must appear in both router page lists');
-    assert.match(router, /case 'system-update':\s*\n\s*if \(typeof loadUpdateConsole === 'function'\) loadUpdateConsole\(\);/);
-    // And the leave-page cleanup: the router only calls initPage on entry, so the progress poller
-    // has to be stopped from the same tail that already does this for the tasks page.
-    assert.match(router, /if \(pageId !== 'system-update' && typeof stopUpdatePolling === 'function'\)/);
+    // Selecting the section runs the console; selecting anything else stops its poller.
+    assert.match(settings, /if \(section === 'update'\) \{[\s\S]{0,160}?loadUpdateConsole\(\)/);
+    assert.match(settings, /else if \(typeof stopUpdatePolling === 'function'\) \{[\s\S]{0,120}?stopUpdatePolling\(\);/);
+
+    // And the console's own idea of "on screen" is the settings page plus that section.
+    assert.match(source, /getElementById\('page-settings'\)/);
+    assert.match(source, /getElementById\('settings-section-update'\)/);
 });
 
 test('the update console has its own stylesheet section', () => {
-    const header = sheet.indexOf('一键更新控制台（system-update）');
+    const header = sheet.indexOf('一键更新控制台（系统设置页的 settings-section-update 分区）');
     assert.ok(header > -1, 'style.css must carry the update console section header');
     const block = sheet.slice(header);
     assert.ok(block.includes('.update-console'), 'the .update-* section must follow its own section header');
-    ['.update-console', '.update-section-title', '.update-facts', '.update-chip-ok', '.update-chip-warn',
+    ['.update-console', '.update-section-head', '.update-section-title', '.update-facts', '.update-chip-ok', '.update-chip-warn',
         '.update-chip-danger', '.update-error', '.update-check-failed', '.update-step-list', '.update-table',
         '.update-restart-choice', '.update-blocker-list', '.update-apply-btn:disabled'].forEach(sel => {
         assert.ok(sheet.includes(sel), sel + ' must be defined');
@@ -398,10 +433,16 @@ test('all locales carry the same update keys, and everything the page asks for e
     assert.deepEqual([...enKeys].filter(k => !ruKeys.has(k)), [], 'keys missing from ru-RU');
     assert.deepEqual([...ruKeys].filter(k => !enKeys.has(k)), [], 'ru-RU has keys other locales do not');
     assert.ok(zhKeys.size >= 60, 'the update namespace has gone thin: ' + zhKeys.size);
-    assert.ok(zh.nav.systemUpdate && en.nav.systemUpdate && ru.nav.systemUpdate, 'nav.systemUpdate must exist in every locale');
-    assert.equal(zh.nav.systemUpdate, '一键更新');
-    assert.equal(en.nav.systemUpdate, 'One-Click Update');
-    assert.equal(ru.nav.systemUpdate, 'Обновление в один клик');
+    // The settings menu is where this feature's entry lives now; the old nav key must be retired
+    // everywhere rather than left behind as a second, drifting label.
+    assert.ok(zh.settings.nav.update && en.settings.nav.update && ru.settings.nav.update,
+        'settings.nav.update must exist in every locale');
+    assert.equal(zh.settings.nav.update, '一键更新');
+    assert.equal(en.settings.nav.update, 'One-Click Update');
+    assert.equal(ru.settings.nav.update, 'Обновление в один клик');
+    [['zh-CN', zh], ['en-US', en], ['ru-RU', ru]].forEach(([label, dict]) => {
+        assert.ok(!dict.nav.systemUpdate, label + ' still carries the retired nav.systemUpdate key');
+    });
 
     // The non-Chinese dictionaries must not be holding Chinese text.
     [...enKeys].forEach(k => {
@@ -416,7 +457,7 @@ test('all locales carry the same update keys, and everything the page asks for e
     });
 
     const htmlKeys = [...template.matchAll(/data-i18n="([^"]+)"/g)].map(m => m[1])
-        .filter(k => k.startsWith('update.') || k === 'nav.systemUpdate');
+        .filter(k => k.startsWith('update.') || k === 'settings.nav.update');
     assert.ok(htmlKeys.length >= 3, 'the page must carry its own translated titles: ' + htmlKeys);
     htmlKeys.forEach(k => {
         assert.ok(resolve(zh, k), 'zh-CN missing ' + k);

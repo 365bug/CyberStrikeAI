@@ -71,8 +71,11 @@ function scheduleUpdateAutoCheck() {
 }
 
 function isUpdateConsoleActive() {
-    const page = document.getElementById('page-system-update');
-    return !!(page && page.classList.contains('active'));
+    // 控制台住在系统设置页的「一键更新」分区里：页面激活还不够，分区也得是当前选中的那个。
+    const page = document.getElementById('page-settings');
+    const section = document.getElementById('settings-section-update');
+    return !!(page && page.classList.contains('active') &&
+        section && section.classList.contains('active'));
 }
 
 function updateStatusOf() {

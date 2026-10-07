@@ -77,7 +77,7 @@ proxy_set_header Connection "upgrade";
 
 ## Upgrading
 
-**Prefer the platform's own one-click update** (console Platform management -> One-click update,
+**Prefer the platform's own one-click update** (console System settings -> One-click update,
 `POST /api/system/update/apply`, or `./cyberstrike-ai -update` at a keyboard). It pulls **the remote
 this install directory already tracks**: fetch, fast-forward, `go build`, atomic binary swap (the old
 binary is kept as `cyberstrike-ai.prev`), while operator content - `roles/ skills/ tools/ agents/

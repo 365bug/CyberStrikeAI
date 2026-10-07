@@ -268,7 +268,7 @@ go build -o cyberstrike-ai ./cmd/server
 
 ### 版本升级与兼容性
 
-**优先用平台自带的「一键更新」**（控制台「平台管理 → 一键更新」，或 `./cyberstrike-ai -update` /
+**优先用平台自带的「一键更新」**（控制台「系统设置 → 一键更新」，或 `./cyberstrike-ai -update` /
 `-check-update` / `-update-rollback`）：它拉的是**本安装目录自己跟踪的远端**，快进后重编译并原子换二进制，
 你的 `roles/skills/tools/agents/data/config.yaml` 会被原样保留（结果里逐个点名保留了什么），
 本地源码有改动或分支已分叉时它会拒绝而不是覆盖。详见 [部署指南](docs/zh-CN/deployment.md)。

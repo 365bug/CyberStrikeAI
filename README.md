@@ -269,7 +269,7 @@ If server logs show `client sent an HTTP request to an HTTPS server`, a client i
 
 ### Upgrade and Compatibility
 
-**Prefer the platform's own one-click update** (console Platform management -> One-click update, or
+**Prefer the platform's own one-click update** (console System settings -> One-click update, or
 `./cyberstrike-ai -update` / `-check-update` / `-update-rollback`): it pulls **the remote this
 installation directory already tracks**, fast-forwards, rebuilds and swaps the binary atomically, keeps
 your `roles/skills/tools/agents/data/config.yaml` untouched (the result names every file it

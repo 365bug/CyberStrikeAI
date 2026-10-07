@@ -179,7 +179,7 @@ SQLite 热备份时最好先停止服务，或至少复制 `*.db`、`*.db-wal`�
 
 ## 升级
 
-**优先用平台自带的「一键更新」**（控制台「平台管理 → 一键更新」、`POST /api/system/update/apply`、
+**优先用平台自带的「一键更新」**（控制台「系统设置 → 一键更新」、`POST /api/system/update/apply`、
 或键盘上的 `./cyberstrike-ai -update`）。它拉的是**这个安装目录自己跟踪的远端**：fetch → 快进合并 →
 `go build` → 原子换二进制（旧的留作 `cyberstrike-ai.prev`），并把 `roles/ skills/ tools/ agents/
 knowledge_base/ data/ config.yaml` 等运维者内容先暂存再放回，结果里点名保留了哪些文件。

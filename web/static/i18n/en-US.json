@@ -202,7 +202,6 @@
     "rollbackItems": "Files that were not rolled back"
   },
   "nav": {
-    "systemUpdate": "One-Click Update",
     "security": "Security",
     "toolGuard": "Call blocking",
     "dashboard": "Dashboard",
@@ -1920,6 +1919,7 @@
       "rbac": "Platform permissions",
       "audit": "Audit logs",
       "storage": "Storage cleanup",
+      "update": "One-Click Update",
       "infocollect": "Asset management"
     },
     "infocollect": {

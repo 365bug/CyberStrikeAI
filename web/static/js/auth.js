@@ -443,7 +443,6 @@ const PAGE_PERMISSION_MAP = {
     roles: 'roles:read',
     'roles-management': 'roles:read',
     'platform-rbac': 'rbac:read',
-    'system-update': 'update:read',
     settings: 'config:read',
 };
 

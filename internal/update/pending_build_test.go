@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -20,6 +21,12 @@ type fakeGo struct {
 
 func scriptFakeGo(t *testing.T) *fakeGo {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		// The scripted toolchain is a POSIX shell script: Windows would not execute it,
+		// LookPath would not even find it, and the scenario would silently assert
+		// nothing. Driving it there needs a different harness, not a different promise.
+		t.Skip("the scripted go toolchain needs a POSIX shell")
+	}
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "fail-build")
 	f := &fakeGo{marker: marker}
@@ -58,6 +65,11 @@ func (f *fakeGo) succeed(t *testing.T) {
 // (git) reachable: a directory holding a symlink to the real git and nothing else.
 func hideToolchain(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		// Same reason as scriptFakeGo: symlinks need privileges there and the bare-name
+		// file would not resolve through LookPath.
+		t.Skip("PATH surgery here needs POSIX symlinks")
+	}
 	realGit, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not installed")

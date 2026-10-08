@@ -26,3 +26,12 @@ REQ-003 / AC-003: 图标随状态切换，显示密码/隐藏密码标签和悬�
 ## F4 Implementation
 
 已替换独立文字按钮为输入框内 20px SVG 眼睛，44px 原生按钮点击区域，登录两输入框最小高度 48px；支持主题色及 focus-visible。JS 不再替换按钮 textContent，使用 aria-label/title 同步现有翻译键；模板标记支持语言重绘。更新 CSS/auth.js 缓存版本。已有密码反馈测试 4/4、JS syntax 和 diff check 通过。
+
+## F5 Verification
+
+- node --test web/static/js/password-feedback.test.cjs: 4/4 PASS。
+- node --check web/static/js/auth.js、git diff --check: PASS。
+- Headless Chrome / Playwright 使用实际登录模板、style.css/mobile.css、实际显隐函数和 applyTranslations；1280/390/320px 各检查等宽输入框、44×44 点击区、Space/Enter 不提交表单的显隐、值不变、focus-visible、双图标切换和中英俄文 aria-label/title 同步，全部 PASS。
+- 六张浅色/深色截图已生成，人工查看 1280px 浅色和 320px 深色；布局正常。验证完成登录入场动画后进行尺寸测量。
+- 未进行真实服务登录和后端测试：本次未改变认证请求或后端。未执行整个 JS 套件。
+- F0–F3 文档提交 2f2e01e/30b680d/6a31e29/4d397a3；F4 代码提交 d590cdd，均已推送。

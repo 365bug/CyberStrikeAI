@@ -385,6 +385,9 @@ func TestFileVersionAndWriteVersion(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
 	if v, err := FileVersion(path); err != nil || v != "v1.0.0" {
 		t.Fatalf("version = %q err = %v", v, err)
 	}
@@ -422,6 +425,46 @@ func TestFileVersionAndWriteVersion(t *testing.T) {
 	// A value that would write malformed YAML is refused rather than written.
 	if _, err := WriteVersion(path, "v1.0.0\"\nserver: hijacked"); err == nil {
 		t.Fatal("a version containing a quote/newline must be refused")
+	}
+}
+
+func TestWriteVersionPreservesYAMLDocumentStart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	original := "---\nserver:\n  port: 8088\n"
+	const originalMode = os.FileMode(0o600)
+	if err := os.WriteFile(path, []byte(original), originalMode); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := WriteVersion(path, "v1.2.3")
+	if err != nil || !changed {
+		t.Fatalf("WriteVersion: changed=%v err=%v", changed, err)
+	}
+	got := readTestFile(t, path)
+	want := "---\nversion: \"v1.2.3\"\nserver:\n  port: 8088\n"
+	if got != want {
+		t.Fatalf("file after write:\n%q\nwant:\n%q", got, want)
+	}
+	if !strings.HasPrefix(got, "---\n") {
+		t.Fatalf("YAML document start must remain first: %q", got)
+	}
+	if version, err := FileVersion(path); err != nil || version != "v1.2.3" {
+		t.Fatalf("FileVersion = %q, %v; want v1.2.3", version, err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load after WriteVersion: %v", err)
+	}
+	if cfg.Server.Port != 8088 {
+		t.Fatalf("server.port = %d, want 8088", cfg.Server.Port)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != originalMode {
+		t.Fatalf("mode = %v, want %v preserved", info.Mode().Perm(), originalMode)
 	}
 }
 

@@ -1796,9 +1796,21 @@ func topVersionKey(line string) bool {
 	return false
 }
 
+func yamlDocumentStart(line string) bool {
+	line = strings.TrimPrefix(strings.TrimSuffix(line, "\r"), "\uFEFF")
+	if !strings.HasPrefix(line, "---") {
+		return false
+	}
+	rest := line[len("---"):]
+	if strings.Trim(rest, " \t") == "" {
+		return true
+	}
+	return len(rest) > 0 && (rest[0] == ' ' || rest[0] == '\t') && strings.HasPrefix(strings.TrimLeft(rest, " \t"), "#")
+}
+
 // WriteVersion 就地替换配置文件的顶层 version 字段，保留其它每一行的原样（tarball 升级
-// 路径一直这么做）；没有这个字段就插到文件开头。返回是否真的改了。写盘走临时文件 + 原子
-// rename——这是运维者的活配置，不能留半截。替换后先把新文本解析回验一遍：行级替换够不着的
+// 路径一直这么做）；没有这个字段就插到文件开头（若文件以 YAML 文档标记开头，则插在标记后）。
+// 返回是否真的改了。写盘走临时文件 + 原子 rename——这是运维者的活配置，不能留半截。替换后先把新文本解析回验一遍：行级替换够不着的
 // 写法（JSON 单行、多行标量……）解析失败或读不回目标值就拒绝写、原文件不动。版本号停在旧值
 // 只是页头显示问题，写坏配置是起不来。
 func WriteVersion(path, version string) (bool, error) {
@@ -1827,7 +1839,12 @@ func WriteVersion(path, version string) (bool, error) {
 		}
 	}
 	if !replaced {
-		lines = append([]string{`version: "` + version + `"`}, lines...)
+		versionLine := `version: "` + version + `"`
+		if len(lines) > 0 && yamlDocumentStart(lines[0]) {
+			lines = append([]string{lines[0], versionLine}, lines[1:]...)
+		} else {
+			lines = append([]string{versionLine}, lines...)
+		}
 	}
 	out := strings.Join(lines, "\n")
 	if out == string(data) {
@@ -1838,6 +1855,10 @@ func WriteVersion(path, version string) (bool, error) {
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(out), info.Mode().Perm()); err != nil {
+		return false, err
+	}
+	if err := os.Chmod(tmp, info.Mode().Perm()); err != nil {
+		_ = os.Remove(tmp)
 		return false, err
 	}
 	if err := os.Rename(tmp, path); err != nil {

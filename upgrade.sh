@@ -28,7 +28,7 @@ set -euo pipefail
 # - tools/ (user extensions; never overwritten by upgrade)
 # - roles/, skills/, agents/
 # - the rollback points of an earlier one-click update:
-#   .update-backup/, .update-state.json, cyberstrike-ai.prev
+#   .update-backup/, .update-state.json, .update-build-pending, cyberstrike-ai.prev
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
@@ -285,7 +285,7 @@ confirm_or_exit() {
     fi
     info " - Preserve tools/: yes (always)"
     info " - Preserve roles/skills/agents: yes (always)"
-    info " - Preserve rollback points (.update-backup/, .update-state.json, ${BINARY_NAME}.prev): yes"
+    info " - Preserve rollback points (.update-backup/, .update-state.json, .update-build-pending, ${BINARY_NAME}.prev): yes"
     info " - Stop service: ${STOP_SERVICE}"
   fi
 
@@ -511,7 +511,7 @@ update_config_version() {
   # config that no longer loads is an installation that no longer starts.
   local new_tag="$1"
   python3 - "$CONFIG_FILE" "$new_tag" <<'PY'
-import os, re, sys
+import os, re, stat, sys, tempfile
 
 path = sys.argv[1]
 tag = sys.argv[2]
@@ -544,11 +544,33 @@ for i, line in enumerate(lines):
 
 if not refused:
     if not replaced:
-        out.insert(0, 'version: "%s"\n' % tag)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.writelines(out)
-    os.replace(tmp, path)
+        insert_at = 0
+        if lines:
+            first = lines[0].rstrip("\r\n")
+            if first.startswith("\ufeff"):
+                first = first[1:]
+            rest = first[3:] if first.startswith("---") else None
+            if rest is not None and (not rest.strip(" \t") or rest[:1] in (" ", "\t") and rest.lstrip(" \t").startswith("#")):
+                insert_at = 1
+                if not lines[0].endswith(("\n", "\r")):
+                    lines[0] += "\n"
+                    out[0] = lines[0]
+        out.insert(insert_at, 'version: "%s"\n' % tag)
+
+    original_mode = stat.S_IMODE(os.stat(path).st_mode)
+    tmp_fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp", dir=os.path.dirname(os.path.abspath(path)))
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            f.writelines(out)
+            f.flush()
+            os.fchmod(f.fileno(), original_mode)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
 PY
 }
 
@@ -588,10 +610,14 @@ sync_code() {
   rsync_excludes+=( "--exclude=agents/" )
 
   # Rollback points written by a one-click update: an rsync --delete that ate them would
-  # leave the installation with no way back.
+  # leave the installation with no way back - and eating .update-build-pending would make it
+  # forget a compile it still owes, so the next click reports "already up to date".
   rsync_excludes+=( "--exclude=.update-backup/" )
   rsync_excludes+=( "--exclude=.update-staging/" )
   rsync_excludes+=( "--exclude=.update-state.json" )
+  rsync_excludes+=( "--exclude=.update-state.json.tmp" )
+  rsync_excludes+=( "--exclude=.update-build-pending" )
+  rsync_excludes+=( "--exclude=.update-build-pending.tmp" )
   rsync_excludes+=( "--exclude=${BINARY_NAME}.prev" )
 
   # Ensure this upgrade script itself is not deleted.

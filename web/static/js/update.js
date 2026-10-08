@@ -34,6 +34,7 @@ let updateWatchdogSlow = null;      // null=还没超时；'running'=仍由旧�
 let updateAutoCheckDone = false; // 每个会话只自动查一次远端，不每次重绘都去打扰
 let updateSourceDraft = null;    // 编辑中的更新源仓库地址；null=还贴着服务端保存的值
 let updateSourceError = '';      // 最近一次保存/接入失败的原因，画在区块里
+let updateActionError = '';      // 最近一次动作（检查/更新/回滚/重启）失败的原因，画在控制台顶部
 let updateAdoptPlan = null;      // 预览回来的接入计划；确认后清掉
 
 function updateT(key, opts) {
@@ -172,25 +173,30 @@ function notify(message, type) {
     }
 }
 
+// 动作期的重绘必须头尾对称。忙时要画"占用中"（按钮带 disabled），闲时要再画回来——
+// 这个页面的检查流程（包括打开页面后的自动检查）会在忙期里重绘，若结束时不再重绘，
+// 那份 disabled 就留在 DOM 上把按钮永久冻死：实测打开页面自动检查一次后，「保存更新源」
+// 带 disabled + data-state-disabled 留在页面上，再点永远没有反应，连请求都发不出去。
+// 横幅改成状态（updateActionError）由 renderUpdateConsole 渲染，退出重绘就不会把它擦掉；
+// 重启守侧接管画面时（updateRestartPending）一律不重绘，别把自恢复视图盖回控制台。
 async function withUpdateBusy(fn, label) {
     if (updateBusy) return;
     updateBusy = true;
+    updateActionError = '';
+    if (!updateRestartPending) renderUpdateConsole();
     try {
         await fn();
     } catch (err) {
         const reason = err && err.message ? err.message : String(err);
-        const text = updateT(UPDATE_FAILURE_KEYS[label] || 'loadFailed', { reason: reason });
-        const el = document.getElementById('update-console');
-        if (el && isUpdateConsoleActive()) {
-            // 先按当前状态重绘再挂横幅：请求炸在半路上时，画面还停在"正在检查远端…"这种
-            // 已经不再成立的状态上，光加一条红字是盖不住它的。
-            renderUpdateConsole();
-            el.insertAdjacentHTML('afterbegin', '<div class="update-error">' + escapeHtml(text) + '</div>');
-        }
-        // 内联横幅会被下一次轮询重绘冲掉，toast 才是留得住的那一份。
-        notify(text, 'error');
+        // 请求炸在半路上时，画面还停在"正在检查更新源…"这种已经不再成立的状态上，
+        // 光加一条红字没用：横幅跟随状态重绘，画面本身也要按当前状态画一遍。
+        updateActionError = updateT(UPDATE_FAILURE_KEYS[label] || 'loadFailed', { reason: reason });
+        if (!updateRestartPending) renderUpdateConsole();
+        // 内联横幅会被下一次动作开始时的重绘冲掉，toast 才是留得住的那一份。
+        notify(updateActionError, 'error');
     } finally {
         updateBusy = false;
+        if (!updateRestartPending) renderUpdateConsole();
     }
 }
 
@@ -208,6 +214,7 @@ async function loadUpdateConsole() {
     resetUpdateCheck();
     updateRestartChoiceSet = false;
     updateRestartChoice = true; // 之后由 noteRestartDefault 按 supervised 修正
+    updateActionError = '';     // 重新进页 = 干净画面，上一次动作的红字不跟过来
     const el = document.getElementById('update-console');
     if (!el) return;
     el.innerHTML = '<div class="empty-state">' + escapeHtml(updateT('loading')) + '</div>';
@@ -957,6 +964,10 @@ function renderUpdateConsole() {
     const job = updateJobOf();
 
     const parts = [];
+    // 动作失败的红字是状态而不是一次性注入：重绘（轮询、退出忙态的那一次）都不能把它擦掉。
+    if (updateActionError) {
+        parts.push('<div class="update-error">' + escapeHtml(updateActionError) + '</div>');
+    }
     if (updateConsoleState.needsRestart) parts.push(renderRestartBanner());
     parts.push(updateSection(updateT('installTitle'), renderUpdateInstallBody(status)));
     parts.push(updateSection(updateT('sourceTitle'), renderUpdateSourceBody(status)));

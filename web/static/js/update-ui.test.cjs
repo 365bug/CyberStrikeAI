@@ -1137,6 +1137,42 @@ test('the source section shows what is in effect, and saving posts the one addre
     assert.ok(h.toasts.some(t => t.type === 'success'), 'a saved source must be confirmed');
 });
 
+test('a finished check must not leave the source form frozen (the button stays clickable)', async () => {
+    // 线上实测过的形态：打开页面 → 自动检查在忙期里重绘 → 检查结束后不再重绘，
+    // 「保存更新源」带着 disabled + data-state-disabled 留在 DOM 上——之后点击永远没有反应，
+    // 服务端连请求都收不到。这里把用户的整条动作链原样跑一遍。
+    const h = await harness({ status: statusOf({ installed: true }), source: configuredSource });
+
+    h.fireDeferred(); // 打开页面 1.2 秒后的那次自动检查
+    assert.match(h.html(), /update-source-save-btn" disabled/,
+        'the form must visibly lock while a check is in flight');
+    await h.flush();
+    assert.match(h.html(), /已是最新|落后/, 'precondition: the automatic check finished');
+    assert.doesNotMatch(h.html(), /update-source-save-btn" disabled/,
+        'a finished check must re-render the form with the button enabled again');
+
+    // 用户的下一步：清空地址 → 点保存 → 请求必须真的发出去
+    h.runHandler("updateSourceRepoChanged('')");
+    await h.fire('saveUpdateSource');
+    await h.flush();
+    const save = h.calls.find(c => c.url === '/api/system/update/source');
+    assert.ok(save, 'saving right after a check must reach the server');
+    assert.deepEqual(JSON.parse(save.body), { repo: '' });
+    assert.doesNotMatch(h.html(), /update-source-save-btn" disabled/,
+        'after saving the button must be ready for the next action, not frozen');
+});
+
+test('a second save is not swallowed by a stale busy flag', async () => {
+    const h = await harness({ status: statusOf({ installed: true }), source: configuredSource });
+    h.runHandler("updateSourceRepoChanged('https://gitlab.com/mirror/csai.git')");
+    await h.fire('saveUpdateSource');
+    await h.flush();
+    await h.fire('saveUpdateSource');
+    await h.flush();
+    const saves = h.calls.filter(c => c.url === '/api/system/update/source');
+    assert.equal(saves.length, 2, 'the second save must also reach the server');
+});
+
 test('clearing the address is the way back to the official repository', async () => {
     const h = await harness({ status: statusOf({ installed: true }), source: configuredSource });
     h.runHandler('updateSourceRepoChanged("")');

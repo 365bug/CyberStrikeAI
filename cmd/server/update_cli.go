@@ -101,17 +101,28 @@ func printSnapshot(s *update.Snapshot) {
 	if !s.CanBuild {
 		fmt.Println("本机没有 Go 工具链：更新只搬源码，不会重编译")
 	}
+	if s.BuildPending {
+		fmt.Println("上一次更新留下了未完成的编译（源码已就位、二进制还是旧的）：装好工具链后重跑更新即可补上")
+	}
 	if s.HasRollback {
 		fmt.Printf("可回滚到 %s\n", s.RollbackTo)
 	}
 }
 
 func printResult(r *update.Result) {
-	if r.Commits == 0 && r.ToCommit == r.FromCommit {
+	moved := r.Commits > 0 || r.ToCommit != r.FromCommit
+	if !moved && !r.BinaryBuilt {
 		fmt.Println("已经是最新，没有改动")
 		return
 	}
-	fmt.Printf("%s → %s（%d 个提交，涉及 %d 个文件，用时 %s）\n", r.FromCommit, r.ToCommit, r.Commits, r.FilesTouched, r.Duration)
+	if moved {
+		fmt.Printf("%s → %s（%d 个提交，涉及 %d 个文件，用时 %s）\n", r.FromCommit, r.ToCommit, r.Commits, r.FilesTouched, r.Duration)
+	} else {
+		// commits == 0 but a binary was built: a retry that finished a build the previous
+		// attempt could not. Saying "已经是最新，没有改动" here would bury the one thing
+		// that did happen.
+		fmt.Printf("源码已经是最新（%s），本次补上了二进制\n", r.ToCommit)
+	}
 	if len(r.KeptContent) > 0 {
 		fmt.Printf("保留了 %d 个本机内容文件（roles/skills/tools 等，没有被上游覆盖）：\n", len(r.KeptContent))
 		for _, p := range r.KeptContent {

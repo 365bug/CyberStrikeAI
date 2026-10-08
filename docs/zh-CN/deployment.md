@@ -185,6 +185,8 @@ SQLite 热备份时最好先停止服务，或至少复制 `*.db`、`*.db-wal`�
 最新代码：fetch → 快进合并 → `go build` → 原子换二进制（旧的留作 `cyberstrike-ai.prev`），并把
 `roles/ skills/ tools/ agents/ knowledge_base/ data/ config.yaml` 等运维者内容先暂存再放回，结果里点名
 保留了哪些文件。本地源码有改动、或本地历史与更新源分叉时它会拒绝并说明原因，而不是硬来。
+构建失败或本机没有 Go 工具链时源码照样更新、二进制保持原样：欠编译会记在安装目录（`.update-build-pending`）
+并被页面标出，装好 go 后再点一次「一键更新」即补编译。
 细节见 [开发者指南](developer-guide.md) 的「一键更新」一节。
 
 检测到 systemd/launchd（环境里有对应启动标记）时，"更新完成后退出进程"默认勾选：更新成功后进程退出、

@@ -332,9 +332,7 @@ async function pollUpdateJob() {
         if (job.state === 'succeeded' && job.restartRequested) {
             // 进程马上要让位给新二进制：先把结论播报掉，再进自恢复视图；不再回头
             // 去读一个即将消失的服务（reportFinishedJob 会去读，这里跳过它）。
-            const result = job.result || null;
-            const tail = result && result.toCommit ? ' ' + result.fromCommit + ' → ' + result.toCommit : '';
-            notify(updateT('jobDoneToast') + tail, 'success');
+            notify(updateDoneToast(job.result || null), 'success');
             startUpdateWatchdog();
             return;
         }
@@ -343,13 +341,22 @@ async function pollUpdateJob() {
     }
 }
 
+// 完成时的这一句只念服务端写下来的结论，但补编译与普通更新是两种完成：commits=0 却换了
+// 二进制时念"a1b2c3d → a1b2c3d"等于没说，得说"补编译完成"。
+function updateDoneToast(result) {
+    if (result && result.binaryBuilt && result.fromCommit && result.fromCommit === result.toCommit) {
+        return updateT('buildDoneToast');
+    }
+    const tail = result && result.toCommit ? ' ' + result.fromCommit + ' → ' + result.toCommit : '';
+    return updateT('jobDoneToast') + tail;
+}
+
 // 播报只念服务端写下来的结论：成功念 result 的两个提交号，失败念 failure.message，
 // 页面自己不在这里编"更新完成"。
 function reportFinishedJob(job) {
     const result = job.result || null;
     if (job.state === 'succeeded') {
-        const tail = result && result.toCommit ? ' ' + result.fromCommit + ' → ' + result.toCommit : '';
-        notify(updateT('jobDoneToast') + tail, 'success');
+        notify(updateDoneToast(result), 'success');
         if (result && result.needsRestart) notify(updateT('needsRestartToast'), 'info');
     } else {
         const reason = (job.failure && job.failure.message) ? job.failure.message : updateT('failureNoMessage');
@@ -418,7 +425,7 @@ function updateApplyBlockers(status, job) {
             behind: status.behind || 0,
         }));
     }
-    if (!status.updateAvailable) blockers.push(updateT('blockedNoUpdate'));
+    if (!status.updateAvailable && !status.buildPending) blockers.push(updateT('blockedNoUpdate'));
     return blockers;
 }
 
@@ -436,12 +443,15 @@ function updateRestartRequested() {
 }
 
 function updateConfirmText(status, restart) {
-    const base = updateT('confirmApply', {
-        repo: status.repo || '-',
-        target: status.remoteCommit || '-',
-        commit: status.commit || '-',
-        n: updateBehindCount(status),
-    });
+    // 补编译和"更新 N 个提交"是两件事：一句说"0 个新提交"的确认框会让人以为白点。
+    const base = (!status.updateAvailable && status.buildPending)
+        ? updateT('confirmBuildPending', { commit: status.commit || '-' })
+        : updateT('confirmApply', {
+            repo: status.repo || '-',
+            target: status.remoteCommit || '-',
+            commit: status.commit || '-',
+            n: updateBehindCount(status),
+        });
     return base + ' ' + (restart ? updateT('confirmRestartYes') : updateT('confirmRestartNo'));
 }
 
@@ -768,6 +778,11 @@ function renderUpdateApplyBody(status, job) {
     }
     if (!status.canBuild && status.installed) {
         parts.push('<div class="update-warn">' + escapeHtml(updateT('noToolchainWarn')) + '</div>');
+    }
+    // 源码已经在更新源尖端、只欠一次编译：这不是"没有可用更新"，按钮必须照常可点，而且
+    // 得说清楚点它会去补编译——否则 no_toolchain 里那句"再点一次更新"在页面上根本没有落点。
+    if (status.buildPending && status.installed) {
+        parts.push('<div class="update-warn">' + escapeHtml(updateT('buildPendingHint')) + '</div>');
     }
 
     // Both halves matter: `disabled` for the browser, `data-state-disabled` so the platform's

@@ -155,6 +155,12 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	// must leave it that way (the source has landed; only the binary has not), so the
 	// cleanup above must not remove the repository any more.
 	adopted = true
+	// The binary is owed from this point, and the marker says so even if this run never
+	// reaches the compile (a failed version write, a crash): the next update click reads
+	// it and finishes the job instead of reporting "already up to date".
+	if opts.binaryName() != "none" {
+		markBuildPending(root)
+	}
 
 	// The connected code carries its own release version; the live config gets it now, so
 	// a tarball install stops showing the version it was unpacked from.
@@ -188,22 +194,10 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		}
 	}
 
-	step("build", "开始编译二进制（首次会下载依赖，可能需要几分钟）")
-	staging := filepath.Join(root, ".update-staging")
-	if err := os.MkdirAll(staging, 0o755); err != nil {
-		return res, &Error{Reason: "staging_failed", Message: err.Error()}
+	if err := buildAndSwap(ctx, root, opts, res, step); err != nil {
+		res.Duration = time.Since(start).Round(time.Millisecond).String()
+		return res, err
 	}
-	defer os.RemoveAll(staging)
-	newBin := filepath.Join(staging, opts.binaryName())
-	if err := build(ctx, root, newBin); err != nil {
-		return res, &Error{Reason: "build_failed", Message: "编译失败，目录已接入但二进制保持原版本：\n" + err.Error()}
-	}
-	prev, err := installBinary(newBin, bin)
-	if err != nil {
-		return res, &Error{Reason: "swap_failed", Message: err.Error()}
-	}
-	res.BinaryBuilt = true
-	res.PrevBinary = prev
 	step("done", fmt.Sprintf("目录已接入 %s/%s（%s）并换好二进制", source, branch, commit))
 	res.Duration = time.Since(start).Round(time.Millisecond).String()
 	return res, nil

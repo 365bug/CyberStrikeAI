@@ -210,6 +210,11 @@ type Snapshot struct {
 	HasRollback bool `json:"hasRollback"`
 	// RollbackTo is the commit the previous update came from, when there is one.
 	RollbackTo string `json:"rollbackTo"`
+	// BuildPending says the last update moved the source but never replaced the binary (a
+	// failed compile, or a machine without a toolchain). Such a tree has nothing left to
+	// pull and still owes a build, which is why this is visible without a network round
+	// trip: the page has to offer the click the failure message told the operator to make.
+	BuildPending bool `json:"buildPending"`
 
 	// CheckError carries a fetch or parse failure to the page instead of turning the
 	// whole endpoint into a 500: "offline" and "your token expired" are answers, not
@@ -303,6 +308,7 @@ func Status(ctx context.Context, opts Options) (*Snapshot, error) {
 	snap.GoToolchain, snap.CanBuild = toolchain(ctx, root)
 	bin := filepath.Join(root, opts.binaryName())
 	snap.HasBinary = fileExists(bin)
+	snap.BuildPending = buildPending(root)
 	if st, ok := readState(root); ok {
 		snap.HasRollback = fileExists(bin+".prev") && st.UpdatedCommit != ""
 		snap.RollbackTo = st.PreviousCommit

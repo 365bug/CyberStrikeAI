@@ -696,6 +696,92 @@ test('local edits, a diverged tree and a clean-but-unchecked tree each block the
     assert.equal(busy.liveTimers().length, 1, 'opening onto a running job resumes the progress read');
 });
 
+test('a tree that only owes a build still offers the button, and says it is a build', async () => {
+    // Source already at the update source's tip, binary stale: the retry the no_toolchain
+    // message talks about has to be reachable from this page. "0 new commits" is not a
+    // reason to disable the button, and the confirm dialog must not claim nothing will
+    // happen.
+    const builtJob = {
+        id: 'upd-9',
+        state: 'succeeded',
+        started: '2026-10-08T10:00:00+08:00',
+        finished: '2026-10-08T10:00:40+08:00',
+        steps: [{ phase: 'build', message: '开始编译二进制（首次会下载依赖，可能需要几分钟）', at: '10:00:01' }],
+        result: {
+            fromCommit: 'a1b2c3d', toCommit: 'a1b2c3d',
+            commits: 0, filesTouched: 0, keptContent: [],
+            binaryPath: '/srv/csai/cyberstrike-ai',
+            binaryBuilt: true, prevBinary: '/srv/csai/cyberstrike-ai.prev',
+            backupDir: '/srv/csai/.update-backup/20261008_100000',
+            needsRestart: true, duration: '40s',
+        },
+        restartRequested: false,
+    };
+    const pendingStatus = statusOf({
+        updateAvailable: false, behind: 0, incoming: [], incomingTotal: 0, buildPending: true,
+    });
+    const h = await harness({
+        status: pendingStatus,
+        responses: {
+            'GET /api/system/update/job': [{ status: 200, body: { job: builtJob } }],
+            'GET /api/system/update': [
+                { status: 200, body: envelope(pendingStatus, null, true) },
+                { status: 200, body: envelope(statusOf({ updateAvailable: false, behind: 0, incoming: [], incomingTotal: 0, commit: 'a1b2c3d' }), builtJob, true) },
+            ],
+        },
+    });
+    const html = h.html();
+    assert.match(html, /<button class="btn-primary update-apply-btn" data-require-permission="update:apply" onclick="startUpdateApply\(\)">/,
+        'a pending build must not read as "nothing to update" and disable the button');
+    assert.match(html, /补上这次编译/, 'the page must say what pressing update will do');
+    assert.doesNotMatch(html, /更新源没有比本机更新的提交/);
+
+    h.calls.length = 0;
+    h.toasts.length = 0;
+    h.fire('startUpdateApply');
+    await h.flush();
+    const apply = h.calls.find(c => c.method === 'POST' && c.url === '/api/system/update/apply');
+    assert.ok(apply, 'the retry must reach the server: ' + h.calls.map(c => c.method + ' ' + c.url));
+    assert.match(h.confirms[h.confirms.length - 1], /补上二进制/,
+        'the confirm dialog describes a build, not "0 new commits"');
+    const success = h.toasts.filter(t => t.type === 'success' && /补编译完成/.test(t.msg)).pop();
+    assert.ok(success, 'a finished build retry is announced as a build: ' + JSON.stringify(h.toasts));
+    assert.deepEqual(h.toasts.filter(t => t.type === 'success' && /a1b2c3d → a1b2c3d/.test(t.msg)), [],
+        'a build-only retry must not be announced as "update a1b2c3d → a1b2c3d"');
+});
+
+test('a pending build with no toolchain fails with the server sentence, never a success', async () => {
+    const failed = {
+        id: 'upd-3',
+        state: 'failed',
+        started: '2026-10-08T11:00:00+08:00',
+        finished: '2026-10-08T11:00:01+08:00',
+        steps: [],
+        failure: {
+            reason: 'no_toolchain',
+            message: '源码已经是更新源最新（a1b2c3d），但二进制还是旧的：本机没有 Go 工具链，无法补编译。装好 go 后再点一次更新即可补上二进制。',
+        },
+        restartRequested: false,
+    };
+    const h = await harness({
+        status: statusOf({
+            updateAvailable: false, behind: 0, incoming: [], incomingTotal: 0,
+            buildPending: true, canBuild: false, goToolchain: '',
+        }),
+        responses: {
+            'GET /api/system/update/job': [{ status: 200, body: { job: failed } }],
+        },
+    });
+    // 按钮仍可点：缺工具链是环境事实，让操作员看到服务端那句"装好 go 再来"才是出路。
+    assert.match(h.html(), /<button class="btn-primary update-apply-btn" data-require-permission="update:apply" onclick="startUpdateApply\(\)">/);
+    await h.api.startUpdateApply();
+    await h.flush();
+    assert.deepEqual(h.toasts.filter(t => t.type === 'success' && /更新完成|补编译完成/.test(t.msg)), [],
+        'a build that did not happen must never be announced as done: ' + JSON.stringify(h.toasts));
+    assert.ok(h.toasts.some(t => t.type === 'error' && /Go 工具链/.test(t.msg)),
+        'the server sentence must be shown: ' + JSON.stringify(h.toasts));
+});
+
 test('applying posts {"restart":false} and then reads the job every 1.5 seconds', async () => {
     // This test is about the poll cadence and the final re-read, so the job finishes without
     // having asked for a restart; the restart hand-off has its own test below.

@@ -43,6 +43,7 @@ coverage.html
 .update-staging/
 .update-backup/
 .update-state.json
+.update-build-pending
 cyberstrike-ai.prev
 
 # Logs and temporary files

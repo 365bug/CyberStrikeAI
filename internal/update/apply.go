@@ -31,6 +31,26 @@ type State struct {
 
 func statePath(root string) string { return filepath.Join(root, stateFile) }
 
+// buildPendingFile records "the source has moved (or was moved), but the binary has not
+// followed": a failed build, or a machine with no Go toolchain. It is written the moment
+// the tree moves and removed only once the new binary is in place, so a retry on an
+// already-current tree still knows there is a compile to finish. A file of its own rather
+// than a State field because an adoption owes a build too, and an adoption has no state
+// (there is no previous commit to roll back to).
+const buildPendingFile = ".update-build-pending"
+
+func buildPendingPath(root string) string { return filepath.Join(root, buildPendingFile) }
+
+// markBuildPending is best-effort on purpose: the marker only makes a later retry sharper,
+// and a bookkeeping write it cannot do must not turn a working update into a failed one.
+func markBuildPending(root string) {
+	_ = os.WriteFile(buildPendingPath(root), []byte("source is ahead of the binary\n"), 0o644)
+}
+
+func clearBuildPending(root string) { _ = os.Remove(buildPendingPath(root)) }
+
+func buildPending(root string) bool { return fileExists(buildPendingPath(root)) }
+
 func readState(root string) (State, bool) {
 	var st State
 	data, err := os.ReadFile(statePath(root))
@@ -150,11 +170,27 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		// from a hand edit) is corrected here instead of waiting for the next commit.
 		versionBefore, versionAfter, versionErr := syncVersionToConfig(snap.Root)
 		versionStep(step, versionBefore, versionAfter, versionErr)
-		return &Result{
+		res := &Result{
 			FromCommit: snap.Commit, ToCommit: snap.Commit,
 			BinaryPath: filepath.Join(snap.Root, opts.binaryName()),
-			Duration:   time.Since(start).Round(time.Millisecond).String(),
-		}, nil
+		}
+		// "Nothing to pull" is not "nothing to do": a build that failed - or could not run
+		// at all - leaves exactly this state, and retrying is what the no_toolchain message
+		// told the operator to do. Deciding by the marker is what keeps this branch from
+		// reporting success while the old binary is still in place.
+		if buildPending(snap.Root) && opts.binaryName() != "none" {
+			// The attempt that parked the content is the one that knows the backup dir;
+			// the retry reports it so "where did my files go" stays answerable.
+			if st, ok := readState(snap.Root); ok {
+				res.BackupDir = st.BackupDir
+			}
+			if err := finishPendingBuild(ctx, snap, opts, res, step); err != nil {
+				res.Duration = time.Since(start).Round(time.Millisecond).String()
+				return res, err
+			}
+		}
+		res.Duration = time.Since(start).Round(time.Millisecond).String()
+		return res, nil
 	}
 
 	step("fetch", fmt.Sprintf("%s（默认分支 %s）有 %d 个新提交：%s → %s", snap.sourceLabel(), snap.TargetBranch, snap.Behind, snap.Commit, snap.RemoteCommit))
@@ -174,6 +210,14 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	if out, err := gitCmd(ctx, root, "merge", "--ff-only", "--no-verify", ref); err != nil {
 		restoreProtected(backupDir, kept)
 		return nil, &Error{Reason: "merge_failed", Message: fmt.Sprintf("快进合并失败：%v\n%s", err, strings.TrimSpace(out))}
+	}
+	// The working tree has moved: from this point the binary is owed, even if the state
+	// write or the compile below never happens (a full disk, a crash, a killed process).
+	// The marker is what the next update click reads to know that "nothing to pull" still
+	// means "there is a compile to finish" - without it this window is the "retry reports
+	// success without building" defect all over again.
+	if opts.binaryName() != "none" {
+		markBuildPending(root)
 	}
 	// The merge wrote upstream's version of the content paths; the operator's copies win
 	// them back, which is what "update the code, keep my work" means.
@@ -219,28 +263,56 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 			Message: "源码已更新，但本机没有 Go 工具链，无法自动编译。装好 go 后再点一次更新即可补上二进制。",
 		}
 	}
+	if err := buildAndSwap(ctx, root, opts, res, step); err != nil {
+		res.Duration = time.Since(start).Round(time.Millisecond).String()
+		return res, err
+	}
+	step("done", fmt.Sprintf("已更新 %d 个提交并换好二进制：%s → %s", res.Commits, res.FromCommit, res.ToCommit))
+	res.Duration = time.Since(start).Round(time.Millisecond).String()
+	return res, nil
+}
 
+// finishPendingBuild compiles the binary a previous update left missing. It only claims
+// success with a compile to show for it: without a toolchain it repeats the same refusal
+// the first attempt gave, because the environment has to change before this can happen.
+func finishPendingBuild(ctx context.Context, snap *Snapshot, opts Options, res *Result, step func(string, string)) error {
+	if !snap.CanBuild {
+		return &Error{
+			Reason:  "no_toolchain",
+			Message: fmt.Sprintf("源码已经是更新源最新（%s），但二进制还是旧的：本机没有 Go 工具链，无法补编译。装好 go 后再点一次更新即可补上二进制。", snap.Commit),
+		}
+	}
+	if err := buildAndSwap(ctx, snap.Root, opts, res, step); err != nil {
+		return err
+	}
+	step("done", fmt.Sprintf("源码已经是更新源最新（%s），本次补上了二进制", snap.Commit))
+	return nil
+}
+
+// buildAndSwap compiles the tree and moves the new binary into place, keeping the previous
+// one as .prev. The pending marker comes off only after the swap: until the install holds
+// the new executable, "there is a build to finish" is still true.
+func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, step func(string, string)) error {
 	step("build", "开始编译二进制（首次会下载依赖，可能需要几分钟）")
 	staging := filepath.Join(root, ".update-staging")
 	if err := os.MkdirAll(staging, 0o755); err != nil {
-		return res, &Error{Reason: "staging_failed", Message: err.Error()}
+		return &Error{Reason: "staging_failed", Message: err.Error()}
 	}
 	defer os.RemoveAll(staging)
 
 	newBin := filepath.Join(staging, opts.binaryName())
 	if err := build(ctx, root, newBin); err != nil {
-		return res, &Error{Reason: "build_failed", Message: "编译失败，二进制保持原版本：\n" + err.Error()}
+		return &Error{Reason: "build_failed", Message: "编译失败，二进制保持原版本：\n" + err.Error()}
 	}
-	prev, err := installBinary(newBin, bin)
+	prev, err := installBinary(newBin, filepath.Join(root, opts.binaryName()))
 	if err != nil {
-		return res, &Error{Reason: "swap_failed", Message: err.Error()}
+		return &Error{Reason: "swap_failed", Message: err.Error()}
 	}
 	res.BinaryBuilt = true
 	res.PrevBinary = prev
 	res.NeedsRestart = true
-	step("done", fmt.Sprintf("已更新 %d 个提交并换好二进制：%s → %s", res.Commits, res.FromCommit, res.ToCommit))
-	res.Duration = time.Since(start).Round(time.Millisecond).String()
-	return res, nil
+	clearBuildPending(root)
+	return nil
 }
 
 // stashProtected copies every operator-owned file that stands in the way of the
@@ -294,6 +366,40 @@ func stashProtected(ctx context.Context, root, ref string) (backupDir string, ke
 	}
 	// Nothing to put aside: don't leave an empty backup directory behind.
 	return "", nil, nil
+}
+
+// stashProtectedEdits copies the operator's local edits to protected files out of the
+// tree before a rollback resets it. Unlike an update's stash it leaves the working copy
+// alone - the reset is what replaces those files - because reset --hard does not know
+// which local changes are the update's and which are the operator's. A file deleted by
+// hand carries no content to copy, so its name is recorded instead and the deletion is
+// re-applied after the reset.
+func stashProtectedEdits(root string, changed []Change) (backupDir string, kept, deleted []string, err error) {
+	ts := time.Now().Format("20060102_150405")
+	for _, c := range changed {
+		if !c.Protected {
+			continue
+		}
+		if c.Status == "deleted" {
+			deleted = append(deleted, c.Path)
+			continue
+		}
+		abs := filepath.Join(root, filepath.FromSlash(c.Path))
+		info, statErr := os.Stat(abs)
+		if statErr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if backupDir == "" {
+			backupDir = filepath.Join(root, ".update-backup", "rollback_"+ts)
+		}
+		if err := copyFile(abs, filepath.Join(backupDir, filepath.FromSlash(c.Path)), info.Mode()); err != nil {
+			return backupDir, kept, deleted, &Error{Reason: "backup_failed", Message: fmt.Sprintf("备份 %s 失败：%v", c.Path, err)}
+		}
+		kept = append(kept, c.Path)
+	}
+	sort.Strings(kept)
+	sort.Strings(deleted)
+	return backupDir, kept, deleted, nil
 }
 
 // restoreProtected puts the named operator-owned copies back over whatever the merge
@@ -370,7 +476,8 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	start := time.Now()
-	if _, blocking := localChanges(ctx, root); len(blocking) > 0 {
+	changes, blocking := localChanges(ctx, root)
+	if len(blocking) > 0 {
 		items := make([]string, 0, len(blocking))
 		for _, c := range blocking {
 			items = append(items, c.Path)
@@ -378,12 +485,36 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 		return nil, &Error{Reason: "local_source_edits", Message: "有本地源码改动，回滚会覆盖它们", Items: items}
 	}
 
+	// Content the operator owns is not the rollback's to discard either: reset --hard takes
+	// every local change to tracked files, so protected files that differ right now - edits
+	// made before the update and edits made after it alike - are copied aside first and set
+	// back on top of the old commit.
+	backupDir, kept, deleted, err := stashProtectedEdits(root, changes)
+	if err != nil {
+		return nil, err
+	}
+
 	if _, err := gitCmd(ctx, root, "reset", "--hard", "--quiet", st.PreviousCommit); err != nil {
 		return nil, &Error{Reason: "reset_failed", Message: err.Error()}
+	}
+	if err := restoreProtected(backupDir, kept); err != nil {
+		return nil, err
+	}
+	for _, p := range deleted {
+		// A protected file the operator deleted by hand stays deleted: the reset just
+		// brought the old commit's copy back, and that deletion is a local change like any
+		// other this rollback promised not to touch.
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(p))); err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 	if err := restorePrevBinary(bin); err != nil {
 		return nil, &Error{Reason: "swap_failed", Message: err.Error()}
 	}
+	// Source and binary agree again (both the previous commit's), so a pending-build
+	// marker from a failed attempt no longer describes anything - keeping it would invite
+	// a rebuild of the old tree.
+	clearBuildPending(root)
 	// The version number goes back with the code it belongs to (only when it is still the
 	// one that update wrote - see restoreVersionAfterRollback).
 	restoreVersionAfterRollback(root, st)
@@ -393,6 +524,7 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 	return &Result{
 		FromCommit:   shortHash(head),
 		ToCommit:     shortHash(st.PreviousCommit),
+		KeptContent:  kept,
 		BinaryPath:   bin,
 		BinaryBuilt:  true,
 		BackupDir:    st.BackupDir,

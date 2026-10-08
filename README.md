@@ -273,7 +273,8 @@ If server logs show `client sent an HTTP request to an HTTPS server`, a client i
 `./cyberstrike-ai -update` / `-check-update` / `-update-rollback`): it pulls the newest commit of the
 **update source repository**'s default branch (the official repository by default; one setting points
 it at your own fork or a mirror), fast-forwards, rebuilds and swaps the binary atomically, keeps your
-`roles/skills/tools/agents/data/config.yaml` untouched (the result names every file it kept), and
+`roles/skills/tools/agents/data/config.yaml` untouched (the result names every file it kept; only
+`config.yaml`'s `version` field is synced to the new code, so the header badge matches it), and
 refuses - rather than overwrites - when source is modified locally or the local history has diverged.
 See the [deployment guide](docs/en-US/deployment.md).
 

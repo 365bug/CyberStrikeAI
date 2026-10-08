@@ -156,6 +156,11 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	// cleanup above must not remove the repository any more.
 	adopted = true
 
+	// The connected code carries its own release version; the live config gets it now, so
+	// a tarball install stops showing the version it was unpacked from.
+	versionBefore, versionAfter, versionErr := syncVersionToConfig(root)
+	versionStep(step, versionBefore, versionAfter, versionErr)
+
 	res := &Result{
 		ToCommit:     commit,
 		FilesTouched: len(scan.paths),

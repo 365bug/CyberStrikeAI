@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -1747,6 +1748,77 @@ func LoadUpdateRepo(path string) (string, error) {
 		return "", fmt.Errorf("解析配置文件失败: %w", err)
 	}
 	return strings.TrimSpace(thin.Update.Repo), nil
+}
+
+// FileVersion 读一个配置文件形态 YAML 的顶层 version 字段。仓库里的 config.example.yaml
+// 载着这份代码对应的发布版本（上游随 release 提交一起改），一键更新用它把"当前跑的是什么
+// 版本"同步进运维者的 config.yaml。文件或字段不存在 = 未知，不是错误。
+func FileVersion(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("读取配置文件失败: %w", err)
+	}
+	var thin struct {
+		Version string `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(data, &thin); err != nil {
+		return "", fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	return strings.TrimSpace(thin.Version), nil
+}
+
+// versionValuePattern 约束能写进配置的版本号：它来自仓库里的文件，但落到的是运维者的
+// 配置上，带引号或换行的值会把 YAML 写坏。
+var versionValuePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
+
+// WriteVersion 就地替换配置文件的顶层 version 字段，保留其它每一行的原样（tarball 升级
+// 路径一直这么做）；没有这个字段就插到文件开头。返回是否真的改了。写盘走临时文件 + 原子
+// rename——这是运维者的活配置，不能留半截。
+func WriteVersion(path, version string) (bool, error) {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return false, nil
+	}
+	if len(version) > 64 || !versionValuePattern.MatchString(version) {
+		return false, fmt.Errorf("版本号不合法：%q", version)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(string(data), "\n")
+	replaced := false
+	for i, line := range lines {
+		// 只认顶层（顶格的）version 键；缩进里同名键属于别的段落，不动。
+		rest := strings.TrimSpace(strings.TrimPrefix(line, "version"))
+		if strings.HasPrefix(line, "version") && strings.HasPrefix(rest, ":") {
+			lines[i] = `version: "` + version + `"`
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		lines = append([]string{`version: "` + version + `"`}, lines...)
+	}
+	out := strings.Join(lines, "\n")
+	if out == string(data) {
+		return false, nil
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(out), info.Mode().Perm()); err != nil {
+		return false, err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func EnsureLocalConfig(path string) (EnsureLocalConfigResult, error) {

@@ -271,7 +271,8 @@ go build -o cyberstrike-ai ./cmd/server
 **优先用平台自带的「一键更新」**（控制台「系统设置 → 一键更新」，或 `./cyberstrike-ai -update` /
 `-check-update` / `-update-rollback`）：它从**更新源仓库**（默认官方仓库，可一处配置改成自己的二开或镜像）
 拉取默认分支的最新代码，快进后重编译并原子换二进制，你的 `roles/skills/tools/agents/data/config.yaml`
-会被原样保留（结果里逐个点名保留了什么），本地源码有改动或本地历史与更新源分叉时它会拒绝而不是覆盖。
+会被原样保留（结果里逐个点名保留了什么，只有 `config.yaml` 的 `version` 字段会随新代码同步，让页头版本号与代码对上），
+本地源码有改动或本地历史与更新源分叉时它会拒绝而不是覆盖。
 详见 [部署指南](docs/zh-CN/deployment.md)。
 
 `upgrade.sh` 仍然可用：本目录是 git 工作树时它就是上面那条命令的薄壳；不是 git 工作树（tarball 安装）时

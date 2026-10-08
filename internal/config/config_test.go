@@ -371,3 +371,65 @@ func TestLoadUpdateRepoReadsOnlyTheSourceField(t *testing.T) {
 		t.Fatal("a malformed config must be an error, not a silent default")
 	}
 }
+
+func TestFileVersionAndWriteVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	// Missing file reads as "unknown", not an error.
+	if v, err := FileVersion(filepath.Join(dir, "missing.yaml")); err != nil || v != "" {
+		t.Fatalf("missing file: %q %v", v, err)
+	}
+
+	original := "version: \"v1.0.0\"\nserver:\n  port: 8088\n  # a nested word: version: should stay put\nnotes:\n  version: nested-untouched\n"
+	if err := os.WriteFile(path, []byte(original), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := FileVersion(path); err != nil || v != "v1.0.0" {
+		t.Fatalf("version = %q err = %v", v, err)
+	}
+
+	changed, err := WriteVersion(path, "v1.1.0")
+	if err != nil || !changed {
+		t.Fatalf("write: changed=%v err=%v", changed, err)
+	}
+	got := readTestFile(t, path)
+	want := "version: \"v1.1.0\"\nserver:\n  port: 8088\n  # a nested word: version: should stay put\nnotes:\n  version: nested-untouched\n"
+	if got != want {
+		t.Fatalf("file after write:\n%q\nwant:\n%q", got, want)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
+		t.Fatalf("mode = %v err = %v, want 0640 preserved", info.Mode(), err)
+	}
+
+	// Idempotent: the same value is not rewritten.
+	if changed, err := WriteVersion(path, "v1.1.0"); err != nil || changed {
+		t.Fatalf("rewriting the same value: changed=%v err=%v", changed, err)
+	}
+
+	// No top-level field: insert at the top, nested keys stay untouched.
+	if err := os.WriteFile(path, []byte("server:\n  port: 8088\nnotes:\n  version: nested\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := WriteVersion(path, "v1.2.0"); err != nil || !changed {
+		t.Fatalf("insert: changed=%v err=%v", changed, err)
+	}
+	got = readTestFile(t, path)
+	if !strings.HasPrefix(got, "version: \"v1.2.0\"\n") || !strings.Contains(got, "  version: nested") {
+		t.Fatalf("file after insert:\n%q", got)
+	}
+
+	// A value that would write malformed YAML is refused rather than written.
+	if _, err := WriteVersion(path, "v1.0.0\"\nserver: hijacked"); err == nil {
+		t.Fatal("a version containing a quote/newline must be refused")
+	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}

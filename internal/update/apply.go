@@ -22,6 +22,11 @@ type State struct {
 	UpdatedCommit  string `json:"updated_commit"`
 	BackupDir      string `json:"backup_dir"`
 	UpdatedAt      string `json:"updated_at"`
+	// VersionBefore/VersionAfter record a version-line change this update made, so a
+	// rollback can put the old number back next to the old code. Absent for updates that
+	// touched no version (old state files simply have no such fields).
+	VersionBefore string `json:"version_before,omitempty"`
+	VersionAfter  string `json:"version_after,omitempty"`
 }
 
 func statePath(root string) string { return filepath.Join(root, stateFile) }
@@ -140,6 +145,11 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		}
 	}
 	if !snap.UpdateAvailable {
+		// Nothing to move - but the installation's own bookkeeping still gets aligned: a
+		// version left over from a tree that was updated before this behaviour existed (or
+		// from a hand edit) is corrected here instead of waiting for the next commit.
+		versionBefore, versionAfter, versionErr := syncVersionToConfig(snap.Root)
+		versionStep(step, versionBefore, versionAfter, versionErr)
 		return &Result{
 			FromCommit: snap.Commit, ToCommit: snap.Commit,
 			BinaryPath: filepath.Join(snap.Root, opts.binaryName()),
@@ -181,7 +191,15 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		FilesTouched: len(nulList(files)),
 	}
 
-	if err := writeState(root, State{PreviousCommit: snap.Commit, UpdatedCommit: snap.RemoteCommit, BackupDir: backupDir}); err != nil {
+	// The new code carries its own release version; the live config (which no merge ever
+	// touches) gets it now, so the page header and the static cache buster follow the code.
+	versionBefore, versionAfter, versionErr := syncVersionToConfig(root)
+	versionStep(step, versionBefore, versionAfter, versionErr)
+
+	if err := writeState(root, State{
+		PreviousCommit: snap.Commit, UpdatedCommit: snap.RemoteCommit, BackupDir: backupDir,
+		VersionBefore: versionBefore, VersionAfter: versionAfter,
+	}); err != nil {
 		return nil, &Error{Reason: "state_unwritable", Message: "无法写入更新状态文件，回滚将不可用：" + err.Error()}
 	}
 
@@ -366,6 +384,9 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 	if err := restorePrevBinary(bin); err != nil {
 		return nil, &Error{Reason: "swap_failed", Message: err.Error()}
 	}
+	// The version number goes back with the code it belongs to (only when it is still the
+	// one that update wrote - see restoreVersionAfterRollback).
+	restoreVersionAfterRollback(root, st)
 	if err := os.Remove(statePath(root)); err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}

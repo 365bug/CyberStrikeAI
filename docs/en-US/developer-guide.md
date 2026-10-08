@@ -92,6 +92,17 @@ installation with one-click update and rollback - but note there is no git histo
 connection, so the connection itself has no earlier commit to roll back to; the first real update
 writes the first rollback point.
 
+### The version number follows the code
+
+The repository's `config.example.yaml` carries the release version this code was cut from
+(upstream bumps it in the release commit), while your `config.yaml` is operator data that no
+update ever touches. So after a successful merge the update writes the new code's version back
+into `config.yaml`'s `version` field (that one line only, temp file plus atomic rename; the job
+log records the old and the new number). After a restart the header badge and the static
+assets' `?v=` both match the code again - which is also why the frontend cache invalidates
+itself on upgrade. A rollback puts the number back too (unless somebody hand-edited it in the
+meantime), and connecting a tarball install syncs it as well.
+
 ### The four refusals
 
 | situation | reason | meaning and what to do |

@@ -417,3 +417,127 @@ func mustGit(t *testing.T, dir string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// The release version rides with the code: after an update the live config has to say the
+// version of the code now on disk (the header badge reads it), and a rollback has to put
+// the old number back next to the old code.
+func TestApplySyncsTheReleaseVersionIntoTheLiveConfig(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	writeFile(t, filepath.Join(tr.install, "config.yaml"), "version: \"v1.0.0\"\nserver:\n  port: 8088\n")
+	tr.upstreamCommit(t, "release: bump version", map[string]string{
+		"config.example.yaml": "version: \"v1.1.0\"\nserver:\n  port: 8088\n",
+		"internal_service.go": "package service\n\nconst Version = \"2\"\n",
+	})
+
+	res, err := Apply(context.Background(), opts(tr), nil)
+	if err != nil {
+		t.Fatalf("apply failed: %v\nresult: %+v", err, res)
+	}
+	live := readFile(t, filepath.Join(tr.install, "config.yaml"))
+	if !strings.Contains(live, `version: "v1.1.0"`) || !strings.Contains(live, "port: 8088") {
+		t.Fatalf("live config after update = %q, want the new version with everything else untouched", live)
+	}
+	st, ok := readState(tr.install)
+	if !ok || st.VersionBefore != "v1.0.0" || st.VersionAfter != "v1.1.0" {
+		t.Fatalf("state = %+v, want the version change recorded for the rollback", st)
+	}
+
+	// Rollback puts the number back with the code.
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "new binary bytes")
+	writeFile(t, bin+".prev", "old binary bytes")
+	if _, err := Rollback(context.Background(), Options{Root: tr.install}); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	live = readFile(t, filepath.Join(tr.install, "config.yaml"))
+	if !strings.Contains(live, `version: "v1.0.0"`) {
+		t.Fatalf("live config after rollback = %q, want the old version back", live)
+	}
+}
+
+func TestRollbackDoesNotClobberAManuallyChangedVersion(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	writeFile(t, filepath.Join(tr.install, "config.yaml"), "version: \"v1.0.0\"\nserver:\n  port: 8088\n")
+	tr.upstreamCommit(t, "release: bump version", map[string]string{
+		"config.example.yaml": "version: \"v1.1.0\"\n",
+	})
+	if _, err := Apply(context.Background(), opts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+	// Somebody pins their own version after the update; a rollback is not theirs to undo.
+	writeFile(t, filepath.Join(tr.install, "config.yaml"), "version: \"v9.9.9-mine\"\nserver:\n  port: 8088\n")
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "new")
+	writeFile(t, bin+".prev", "old")
+	if _, err := Rollback(context.Background(), Options{Root: tr.install}); err != nil {
+		t.Fatal(err)
+	}
+	if live := readFile(t, filepath.Join(tr.install, "config.yaml")); !strings.Contains(live, "v9.9.9-mine") {
+		t.Fatalf("a hand-set version must survive a rollback, got %q", live)
+	}
+}
+
+func TestApplyLeavesTheVersionAloneWhenTheTreeCarriesNone(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	// The fixture's upstream has no config.example.yaml at all: nothing to sync, and the
+	// live config must not be rewritten with a guess.
+	writeFile(t, filepath.Join(tr.install, "config.yaml"), "version: \"v1.0.0\"\nserver:\n  port: 8088\n")
+	tr.upstreamCommit(t, "second: bump service", map[string]string{
+		"internal_service.go": "package service\n\nconst Version = \"2\"\n",
+	})
+	if _, err := Apply(context.Background(), opts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+	if live := readFile(t, filepath.Join(tr.install, "config.yaml")); !strings.Contains(live, "v1.0.0") {
+		t.Fatalf("live config = %q, want it untouched", live)
+	}
+	if st, _ := readState(tr.install); st.VersionAfter != "" || st.VersionBefore != "" {
+		t.Fatalf("state = %+v, want no version fields when nothing changed", st)
+	}
+}
+
+func TestAdoptSyncsTheReleaseVersionIntoTheLiveConfig(t *testing.T) {
+	requireGit(t)
+	tr, dir := newAdoptFixture(t)
+	writeFile(t, filepath.Join(dir, "config.yaml"), "version: \"v0.9.0\"\nserver:\n  port: 8088\n")
+	tr.upstreamCommit(t, "release: bump version", map[string]string{
+		"config.example.yaml": "version: \"v1.1.0\"\n",
+	})
+
+	res, err := Adopt(context.Background(), Options{Root: dir, Repo: tr.upstream, BinaryName: "none"}, nil)
+	if err != nil {
+		t.Fatalf("adopt failed: %v\nresult: %+v", err, res)
+	}
+	live := readFile(t, filepath.Join(dir, "config.yaml"))
+	if !strings.Contains(live, `version: "v1.1.0"`) || !strings.Contains(live, "port: 8088") {
+		t.Fatalf("live config after adopt = %q, want the connected code's version with the rest untouched", live)
+	}
+}
+
+// A tree that is already current still gets its bookkeeping aligned: the version field is
+// the one thing an update may correct with no commits to move (that is exactly the state a
+// pre-feature installation is in).
+func TestApplyAlignsTheVersionEvenWithNothingToPull(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	writeFile(t, filepath.Join(tr.install, "config.yaml"), "version: \"v0.9.0\"\nserver:\n  port: 8088\n")
+	writeFile(t, filepath.Join(tr.install, "config.example.yaml"), "version: \"v1.1.0\"\n")
+
+	res, err := Apply(context.Background(), opts(tr), nil)
+	if err != nil {
+		t.Fatalf("no-op apply failed: %v", err)
+	}
+	if res.Commits != 0 {
+		t.Fatalf("res = %+v, want zero movement", res)
+	}
+	if live := readFile(t, filepath.Join(tr.install, "config.yaml")); !strings.Contains(live, `version: "v1.1.0"`) {
+		t.Fatalf("live config = %q, want the version aligned even though nothing moved", live)
+	}
+	// Bookkeeping only: a version-only correction writes no rollback state.
+	if _, ok := readState(tr.install); ok {
+		t.Fatal("a version-only alignment must not claim to be a rollback point")
+	}
+}

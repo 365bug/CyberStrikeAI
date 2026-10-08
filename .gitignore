@@ -43,7 +43,9 @@ coverage.html
 .update-staging/
 .update-backup/
 .update-state.json
+.update-state.json.tmp
 .update-build-pending
+.update-build-pending.tmp
 cyberstrike-ai.prev
 
 # Logs and temporary files

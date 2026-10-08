@@ -68,6 +68,26 @@ func syncVersionToConfig(root string) (before, after string, err error) {
 	return current, target, nil
 }
 
+// plannedVersionChange reports the change a sync is about to make, before it makes it: the
+// live config's current number and the one the code on disk carries. Empty when there is
+// nothing to do. An update records this in its pending marker *before* writing the config,
+// so a crash between the two still leaves a rollback that can put the old number back.
+func plannedVersionChange(root string) (before, after string) {
+	path := liveConfigFile(root)
+	if path == "" {
+		return "", ""
+	}
+	target := installVersion(root)
+	if target == "" {
+		return "", ""
+	}
+	current, err := config.FileVersion(path)
+	if err != nil || current == target {
+		return "", ""
+	}
+	return current, target
+}
+
 // versionStep renders the sync outcome as one progress line; no lines for "nothing to
 // do", a warning when the write failed (the update itself still stands).
 func versionStep(step func(string, string), before, after string, err error) {

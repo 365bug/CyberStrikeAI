@@ -2,6 +2,9 @@ package update
 
 import (
 	"context"
+	"crypto/sha256"
+	"debug/buildinfo"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -106,6 +109,32 @@ func restorePrevBinary(bin string) error {
 	return os.Rename(prev, bin)
 }
 
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func binaryRevision(path string) string {
+	info, err := buildinfo.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			return strings.TrimSpace(setting.Value)
+		}
+	}
+	return ""
+}
+
 // tail keeps the last bytes of a compiler's output: the end of a build log is where the
 // error is, while the beginning is where the module downloads are.
 func tail(s string, n int) string {
@@ -132,6 +161,11 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	tmp := dst + ".tmp"
 	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode.Perm())
 	if err != nil {
+		return err
+	}
+	if err := out.Chmod(mode.Perm()); err != nil {
+		out.Close()
+		os.Remove(tmp)
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {

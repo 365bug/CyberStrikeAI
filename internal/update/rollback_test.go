@@ -81,3 +81,34 @@ func TestRollbackKeepsAHandDeletionOfAProtectedFile(t *testing.T) {
 		t.Errorf("a file deleted by hand was resurrected by the rollback (%v); result %+v", err, res)
 	}
 }
+
+func TestRollbackKeepsProtectedFileRecreatedAfterUpstreamDeletedIt(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	if err := os.Remove(filepath.Join(tr.upstream, "roles", "shipped.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(tr.upstream, "internal_service.go"), "package service\n\nconst Version = \"2\"\n")
+	mustGit(t, tr.upstream, "add", "-A")
+	mustGit(t, tr.upstream, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", "upstream deletes the shipped role")
+	if _, err := Apply(context.Background(), opts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	recreated := filepath.Join(tr.install, "roles", "shipped.yaml")
+	writeFile(t, recreated, "name: shipped\ndescription: mine after upstream deleted it\n")
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "new binary bytes")
+	writeFile(t, bin+".prev", "old binary bytes")
+
+	res, err := Rollback(context.Background(), Options{Root: tr.install})
+	if err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	if got := readFile(t, recreated); !strings.Contains(got, "mine after upstream deleted it") {
+		t.Fatalf("rollback overwrote the operator's recreated role: %q", got)
+	}
+	if got := strings.Join(res.KeptContent, ","); got != "roles/shipped.yaml" {
+		t.Fatalf("keptContent = %v, want the recreated role named", res.KeptContent)
+	}
+}

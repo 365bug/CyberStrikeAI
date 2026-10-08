@@ -310,7 +310,8 @@ func Status(ctx context.Context, opts Options) (*Snapshot, error) {
 	snap.HasBinary = fileExists(bin)
 	snap.BuildPending = buildPending(root)
 	if st, ok := readState(root); ok {
-		snap.HasRollback = fileExists(bin+".prev") && st.UpdatedCommit != ""
+		binaryAlreadyMatchesTarget := st.BinaryCommit != "" && st.BinaryCommit == st.PreviousCommit
+		snap.HasRollback = st.UpdatedCommit != "" && (binaryAlreadyMatchesTarget || fileExists(bin+".prev"))
 		snap.RollbackTo = st.PreviousCommit
 	}
 	return snap, nil

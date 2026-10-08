@@ -39,7 +39,8 @@ func scriptFakeGo(t *testing.T) *fakeGo {
 		"  prev=\"$a\"\n" +
 		"done\n" +
 		"if [ -f \"" + marker + "\" ]; then echo 'vet: internal/foo.go:12: fake failure' >&2; exit 1; fi\n" +
-		"echo 'fake binary' > \"$out\"\n"
+		"commit=$(git rev-parse --short HEAD) || exit 1\n" +
+		"echo \"fake binary for $commit\" > \"$out\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "go"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -144,6 +145,49 @@ func TestRetryAfterFailedBuildCompilesTheBinary(t *testing.T) {
 // aborted before the state file could be written (a full disk, a directory sitting where
 // the file goes). The tree still owes a binary, and the retry must know that - the marker
 // is written the moment the merge lands, not after the bookkeeping that may fail.
+func TestRollbackAfterFailedBuildKeepsTheMatchingPreviousBinary(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	fake := scriptFakeGo(t)
+	fake.failBuild(t)
+
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	before := mustGit(t, tr.install, "rev-parse", "HEAD")
+	tr.upstreamCommit(t, "upstream moves", map[string]string{"internal_service.go": "package service\n\nconst Version = \"2\"\n"})
+
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err == nil {
+		t.Fatal("the build must fail")
+	}
+	if fileExists(bin + ".prev") {
+		t.Fatal("a failed build must not create a rollback binary")
+	}
+	snap, err := Status(context.Background(), buildOpts(tr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snap.HasRollback {
+		t.Fatal("source can roll back to the commit already matching the live binary")
+	}
+
+	res, err := Rollback(context.Background(), buildOpts(tr))
+	if err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	if got := mustGit(t, tr.install, "rev-parse", "HEAD"); got != before {
+		t.Fatalf("rollback source = %s, want %s", got, before)
+	}
+	if got := readFile(t, bin); got != "original binary" {
+		t.Fatalf("rollback changed an already-matching binary: %q", got)
+	}
+	if res.BinaryBuilt {
+		t.Fatalf("rollback result must not claim a binary swap: %+v", res)
+	}
+	if buildPending(tr.install) {
+		t.Fatal("rollback must clear the pending build marker")
+	}
+}
+
 func TestRetryFinishesTheBuildWhenTheStateWriteFailed(t *testing.T) {
 	requireGit(t)
 	tr := newTree(t)
@@ -256,5 +300,289 @@ func TestRetryWithoutToolchainKeepsSayingSoAndThenBuilds(t *testing.T) {
 	}
 	if got := readFile(t, bin); !strings.Contains(got, "fake binary") {
 		t.Errorf("binary = %q, want the compiled one", got)
+	}
+}
+
+func TestNewUpdateFinishesThePendingCommitBeforeAdvancing(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	fake := scriptFakeGo(t)
+	fake.failBuild(t)
+
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	tr.upstreamCommit(t, "second", map[string]string{"internal_service.go": "package service\n\nconst Version = \"2\"\n"})
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err == nil {
+		t.Fatal("the first build must fail")
+	}
+	second := mustGit(t, tr.install, "rev-parse", "--short", "HEAD")
+
+	tr.upstreamCommit(t, "third", map[string]string{"internal_service.go": "package service\n\nconst Version = \"3\"\n"})
+	third := mustGit(t, tr.upstream, "rev-parse", "--short", "HEAD")
+	fake.succeed(t)
+	res, err := Apply(context.Background(), buildOpts(tr), nil)
+	if err != nil {
+		t.Fatalf("second apply failed: %v (result %+v)", err, res)
+	}
+	if got := readFile(t, bin); !strings.Contains(got, third) {
+		t.Fatalf("live binary = %q, want third commit %s", got, third)
+	}
+	if got := readFile(t, bin+".prev"); !strings.Contains(got, second) {
+		t.Fatalf("rollback binary = %q, want second commit %s", got, second)
+	}
+
+	if _, err := Rollback(context.Background(), buildOpts(tr)); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	if head := mustGit(t, tr.install, "rev-parse", "--short", "HEAD"); head != second {
+		t.Fatalf("rollback source = %s, want %s", head, second)
+	}
+	if got := readFile(t, bin); !strings.Contains(got, second) {
+		t.Fatalf("rollback binary = %q, want the same commit as source %s", got, second)
+	}
+}
+
+func TestResidualPendingMarkerDoesNotReplaceTheRollbackBinary(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	scriptFakeGo(t)
+
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	before := mustGit(t, tr.install, "rev-parse", "--short", "HEAD")
+	tr.upstreamCommit(t, "second", map[string]string{"internal_service.go": "package service\n\nconst Version = \"2\"\n"})
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+	updated := mustGit(t, tr.install, "rev-parse", "--short", "HEAD")
+
+	legacy, ok := readState(tr.install)
+	if !ok {
+		t.Fatal("successful update must leave rollback state")
+	}
+	legacy.BinaryCommit = ""
+	legacy.BinarySHA256 = ""
+	legacy.PreviousBinarySHA256 = ""
+	if err := writeState(tr.install, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(buildPendingPath(tr.install), []byte("source is ahead of the binary\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Apply(context.Background(), buildOpts(tr), nil)
+	if err != nil {
+		t.Fatalf("retry with a residual marker failed: %v", err)
+	}
+	if !res.BinaryBuilt || !res.NeedsRestart {
+		t.Fatalf("the already-installed binary must still be reported as awaiting restart: %+v", res)
+	}
+	if got := readFile(t, bin+".prev"); got != "original binary" {
+		t.Fatalf("residual marker replaced rollback binary with %q", got)
+	}
+
+	if _, err := Rollback(context.Background(), buildOpts(tr)); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	if head := mustGit(t, tr.install, "rev-parse", "--short", "HEAD"); head != before {
+		t.Fatalf("rollback source = %s, want %s (updated was %s)", head, before, updated)
+	}
+	if got := readFile(t, bin); got != "original binary" {
+		t.Fatalf("rollback binary = %q, want original binary", got)
+	}
+}
+
+func TestLegacyPendingMarkerRefusesAHeadThatMovedAgain(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	scriptFakeGo(t)
+
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	tr.upstreamCommit(t, "second", map[string]string{"internal_service.go": "package service\n\nconst Version = \"2\"\n"})
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+	rollbackBinary := readFile(t, bin+".prev")
+	legacy, ok := readState(tr.install)
+	if !ok {
+		t.Fatal("successful update must leave rollback state")
+	}
+	legacy.BinaryCommit = ""
+	legacy.BinarySHA256 = ""
+	legacy.PreviousBinarySHA256 = ""
+	if err := writeState(tr.install, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(buildPendingPath(tr.install), []byte("source is ahead of the binary\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, filepath.Join(tr.install, "local.go"), "package service\n")
+	mustGit(t, tr.install, "add", "local.go")
+	mustGit(t, tr.install, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", "local move after update")
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err == nil {
+		t.Fatal("a legacy marker must not be reinterpreted after HEAD moved")
+	} else if ue, ok := err.(*Error); !ok || ue.Reason != "build_state_mismatch" {
+		t.Fatalf("want build_state_mismatch, got %v", err)
+	}
+	if got := readFile(t, bin+".prev"); got != rollbackBinary {
+		t.Fatalf("refused migration changed rollback binary: %q", got)
+	}
+}
+
+// A crash between the version write and the state write leaves the new number in the live
+// config with no rollback record beside it. The marker is written *before* the config, so it
+// still carries the pair - which is what lets the retry rebuild that record and the rollback
+// put the old number back next to the old code.
+func TestRetryRebuildsTheRollbackRecordTheCrashNeverWrote(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	fake := scriptFakeGo(t)
+	fake.failBuild(t)
+
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	writeFile(t, filepath.Join(tr.install, "config.yaml"), "version: \"v1.0.0\"\nserver:\n  port: 8088\n")
+	tr.upstreamCommit(t, "release: bump version", map[string]string{
+		"config.example.yaml": "version: \"v1.1.0\"\n",
+		"internal_service.go": "package service\n\nconst Version = \"2\"\n",
+	})
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err == nil {
+		t.Fatal("the first build must fail")
+	}
+	pending, present, err := readBuildPending(tr.install)
+	if err != nil || !present {
+		t.Fatalf("marker = %+v present=%v err=%v", pending, present, err)
+	}
+	if pending.VersionBefore != "v1.0.0" || pending.VersionAfter != "v1.1.0" {
+		t.Fatalf("the marker must carry the version pair before the config is written: %+v", pending)
+	}
+
+	// The crash: the config already carries the new number, the state file never landed.
+	if err := os.Remove(statePath(tr.install)); err != nil {
+		t.Fatal(err)
+	}
+	fake.succeed(t)
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+		t.Fatalf("retry failed: %v", err)
+	}
+	st, ok := readState(tr.install)
+	if !ok || st.VersionBefore != "v1.0.0" || st.VersionAfter != "v1.1.0" {
+		t.Fatalf("the retry must rebuild the rollback record from the marker: ok=%v state=%+v", ok, st)
+	}
+	if _, err := Rollback(context.Background(), buildOpts(tr)); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	live := readFile(t, filepath.Join(tr.install, "config.yaml"))
+	if !strings.Contains(live, `version: "v1.0.0"`) || !strings.Contains(live, "port: 8088") {
+		t.Fatalf("live config after rollback = %q, want the old version back with the settings intact", live)
+	}
+}
+
+func TestRetryRestoresProtectedContentWhenInterruptedBeforeMerge(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	scriptFakeGo(t)
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	role := filepath.Join(tr.install, "roles", "shipped.yaml")
+	writeFile(t, role, "name: shipped\ndescription: mine\n")
+	tr.upstreamCommit(t, "second", map[string]string{
+		"internal_service.go": "package service\n\nconst Version = \"2\"\n",
+		"roles/shipped.yaml":  "name: shipped\ndescription: upstream\n",
+	})
+
+	snap, err := Check(context.Background(), buildOpts(tr))
+	if err != nil || snap.CheckError != "" {
+		t.Fatalf("check: %v, %s", err, snap.CheckError)
+	}
+	backupDir, kept, err := stashProtected(context.Background(), tr.install, snap.sourceRef())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := removeProtected(tr.install, kept); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(role) {
+		t.Fatal("fixture must stop after the operator role was moved aside")
+	}
+	previous := mustGit(t, tr.install, "rev-parse", "HEAD")
+	target := mustGit(t, tr.install, "rev-parse", snap.sourceRef())
+	oldHash, err := fileSHA256(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeBuildPending(tr.install, buildPendingState{
+		Commit: target, PreviousCommit: previous, BackupDir: backupDir,
+		KeptContent: kept, PreviousBinarySHA256: oldHash,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+		t.Fatalf("retry failed: %v", err)
+	}
+	if got := readFile(t, role); !strings.Contains(got, "description: mine") {
+		t.Fatalf("operator role was not restored: %q", got)
+	}
+}
+
+func TestRetryAfterMergeRestoresOnlyUntouchedProtectedContent(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		afterMerge string
+		want       string
+	}{
+		{name: "merge copy untouched", want: "description: mine before crash"},
+		{name: "operator edited after crash", afterMerge: "name: shipped\ndescription: mine after crash\n", want: "description: mine after crash"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireGit(t)
+			tr := newTree(t)
+			scriptFakeGo(t)
+			bin := filepath.Join(tr.install, Binary)
+			writeFile(t, bin, "original binary")
+			role := filepath.Join(tr.install, "roles", "shipped.yaml")
+			writeFile(t, role, "name: shipped\ndescription: mine before crash\n")
+			tr.upstreamCommit(t, "second", map[string]string{
+				"internal_service.go": "package service\n\nconst Version = \"2\"\n",
+				"roles/shipped.yaml":  "name: shipped\ndescription: upstream\n",
+			})
+
+			snap, err := Check(context.Background(), buildOpts(tr))
+			if err != nil || snap.CheckError != "" {
+				t.Fatalf("check: %v, %s", err, snap.CheckError)
+			}
+			backupDir, kept, err := stashProtected(context.Background(), tr.install, snap.sourceRef())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := removeProtected(tr.install, kept); err != nil {
+				t.Fatal(err)
+			}
+			previous := mustGit(t, tr.install, "rev-parse", "HEAD")
+			target := mustGit(t, tr.install, "rev-parse", snap.sourceRef())
+			oldHash, err := fileSHA256(bin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writeBuildPending(tr.install, buildPendingState{
+				Commit: target, PreviousCommit: previous, BackupDir: backupDir,
+				KeptContent: kept, PreviousBinarySHA256: oldHash,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			mustGit(t, tr.install, "merge", "--ff-only", "--no-verify", snap.sourceRef())
+			if tc.afterMerge != "" {
+				writeFile(t, role, tc.afterMerge)
+			}
+
+			if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+				t.Fatalf("retry failed: %v", err)
+			}
+			if got := readFile(t, role); !strings.Contains(got, tc.want) {
+				t.Fatalf("protected content after retry = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

@@ -127,9 +127,11 @@ update:
 ### 回滚
 
 `./cyberstrike-ai -update-rollback` 或页面按钮：`git reset --hard` 回到那次更新前的提交，
-并把换二进制时留下的 `cyberstrike-ai.prev` 放回原位，随后删除 `.update-state.json`。
-它会拒绝的情形：没有更新记录（`no_state`）、没有留下旧二进制（`no_binary`）、记录里的提交在本仓库不存在
-（`bad_state`）、**HEAD 自那次更新之后又动过**（`moved_since_update`：回滚只该撤到更新前，不该顺手抹掉之后的工作）、
+换过二进制的那次会把 `cyberstrike-ai.prev` 放回原位，随后删除 `.update-state.json`。
+编译失败的那次更新从没换过二进制，所以它的回滚只搬源码——磁盘上的二进制本来就属于要回去的那个提交。
+它会拒绝的情形：没有更新记录（`no_state`）、需要换回却没有留下 `cyberstrike-ai.prev`（`no_binary`）、
+记录里的提交在本仓库不存在（`bad_state`）、磁盘上的二进制不是记录里与该提交配对的那一个（`binary_changed`）、
+**HEAD 自那次更新之后又动过**（`moved_since_update`：回滚只该撤到更新前，不该顺手抹掉之后的工作）、
 以及存在本地源码改动（`local_source_edits`）。
 
 ### 重启的两种情形

@@ -132,9 +132,12 @@ version that lands is yours, and the result says so.
 ### Rollback
 
 `./cyberstrike-ai -update-rollback`, or the button on the page: `git reset --hard` back to the commit
-the update came from, the binary kept as `cyberstrike-ai.prev` is put back, and `.update-state.json`
-is removed. It refuses when there is no update record (`no_state`), no kept binary (`no_binary`), the
-recorded commit is not in this repository (`bad_state`), **HEAD has moved since that update**
+the update came from, the binary kept as `cyberstrike-ai.prev` is put back when that update swapped
+one, and `.update-state.json` is removed. An update whose build failed never swapped a binary, so its
+rollback moves the source only - the binary on disk already belongs to the commit it returns to. It
+refuses when there is no update record (`no_state`), a swap is owed but no `cyberstrike-ai.prev` is
+left (`no_binary`), a recorded commit is not in this repository (`bad_state`), the binary on disk is
+not the one the record pairs with that commit (`binary_changed`), **HEAD has moved since that update**
 (`moved_since_update` - a rollback undoes the update, not the work done after it), or source is
 modified locally (`local_source_edits`).
 

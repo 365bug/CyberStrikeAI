@@ -142,8 +142,39 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		step("protect", fmt.Sprintf("%d 个文件已留底（被替换的在 %s/overwritten/，运维者的会原样放回）", len(backupAll), backupDir))
 	}
 
+	targetCommit, err := gitCmd(ctx, root, "rev-parse", ref)
+	if err != nil {
+		return nil, err
+	}
+	pending := buildPendingState{
+		Commit:      targetCommit,
+		BackupDir:   backupDir,
+		KeptContent: append([]string(nil), scan.kept...),
+	}
+	if opts.binaryName() != "none" {
+		bin := filepath.Join(root, opts.binaryName())
+		if fileExists(bin) {
+			pending.PreviousBinarySHA256, err = fileSHA256(bin)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	if _, err := gitCmd(ctx, root, "checkout", "--force", "-B", branch, ref); err != nil {
 		return nil, &Error{Reason: "checkout_failed", Message: "落地目标内容失败：" + err.Error()}
+	}
+	// The source has landed. Keep the repository from here onward so any failure can be
+	// resumed by the normal update path instead of hiding the moved tree by deleting .git.
+	adopted = true
+	// The connected code carries its own release version and the live config gets it below;
+	// the pair is recorded in the marker first so a crash during that write still leaves a
+	// recovery record that can put the old number back.
+	pending.VersionBefore, pending.VersionAfter = plannedVersionChange(root)
+	if opts.binaryName() != "none" {
+		if err := writeBuildPending(root, pending); err != nil {
+			_ = restoreProtected(backupDir, scan.kept)
+			return nil, &Error{Reason: "state_unwritable", Message: "无法写入待编译状态：" + err.Error()}
+		}
 	}
 	if err := restoreProtected(backupDir, scan.kept); err != nil {
 		return nil, err
@@ -151,19 +182,7 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	if _, err := gitCmd(ctx, root, "branch", "--set-upstream-to="+ref); err != nil {
 		return nil, &Error{Reason: "upstream_failed", Message: "设置分支跟踪失败：" + err.Error()}
 	}
-	// From here the directory IS a work tree tracking the source: a later build failure
-	// must leave it that way (the source has landed; only the binary has not), so the
-	// cleanup above must not remove the repository any more.
-	adopted = true
-	// The binary is owed from this point, and the marker says so even if this run never
-	// reaches the compile (a failed version write, a crash): the next update click reads
-	// it and finishes the job instead of reporting "already up to date".
-	if opts.binaryName() != "none" {
-		markBuildPending(root)
-	}
 
-	// The connected code carries its own release version; the live config gets it now, so
-	// a tarball install stops showing the version it was unpacked from.
 	versionBefore, versionAfter, versionErr := syncVersionToConfig(root)
 	versionStep(step, versionBefore, versionAfter, versionErr)
 
@@ -194,7 +213,7 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		}
 	}
 
-	if err := buildAndSwap(ctx, root, opts, res, step); err != nil {
+	if err := buildAndSwap(ctx, root, opts, res, step, targetCommit, nil, pending); err != nil {
 		res.Duration = time.Since(start).Round(time.Millisecond).String()
 		return res, err
 	}

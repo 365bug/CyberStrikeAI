@@ -425,6 +425,62 @@ func TestFileVersionAndWriteVersion(t *testing.T) {
 	}
 }
 
+// FileVersion 用 YAML 解析（引号键认得出），WriteVersion 若只认顶格裸键，合法配置就会被追加
+// 出第二个 version 键、整个文件随后 Load 失败。这条测试钉死两者口径一致，以及"改不了就拒绝写"。
+func TestWriteVersionRewritesQuotedKeysAndRefusesWhatItCannot(t *testing.T) {
+	dir := t.TempDir()
+
+	// Legal spellings of the same top-level key: replaced in place, exactly one key left.
+	for _, original := range []string{
+		"\"version\": \"v1.0.0\"\nserver:\n  port: 8088\n",
+		"'version': v1.0.0\nserver:\n  port: 8088\n",
+		"\"version\":   v1.0.0\nserver:\n  port: 8088\n",
+	} {
+		path := filepath.Join(dir, "quoted.yaml")
+		if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if v, err := FileVersion(path); err != nil || v != "v1.0.0" {
+			t.Fatalf("FileVersion(%q) = %q, %v", original, v, err)
+		}
+		changed, err := WriteVersion(path, "v1.7.22")
+		if err != nil || !changed {
+			t.Fatalf("WriteVersion(%q): changed=%v err=%v", original, changed, err)
+		}
+		got := readTestFile(t, path)
+		if strings.Count(got, "version") != 1 {
+			t.Fatalf("writing %q left %d version keys:\n%q", original, strings.Count(got, "version"), got)
+		}
+		if v, err := FileVersion(path); err != nil || v != "v1.7.22" {
+			t.Fatalf("after writing %q: FileVersion = %q, %v (file %q)", original, v, err, got)
+		}
+		if !strings.Contains(got, "port: 8088") {
+			t.Fatalf("the rest of the file must stay: %q", got)
+		}
+	}
+
+	// Forms a line-based replacement cannot rewrite: refused with the file untouched. A
+	// stale version number is a display artifact; a config that no longer loads is an
+	// installation that no longer starts.
+	for _, original := range []string{
+		"{\"version\": \"v1.0.0\", \"server\": {\"port\": 8088}}\n",
+		"version: >-\n  v1.0.0\nserver:\n  port: 8088\n",
+		"\"version\": \"v9.9.9\"\n\"version\": \"v1.0.0\"\n",
+	} {
+		path := filepath.Join(dir, "unwritable.yaml")
+		if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		changed, err := WriteVersion(path, "v1.7.22")
+		if err == nil {
+			t.Fatalf("WriteVersion(%q) must refuse instead of writing: changed=%v file=%q", original, changed, readTestFile(t, path))
+		}
+		if got := readTestFile(t, path); got != original {
+			t.Fatalf("a refused write must not touch the file:\nbefore %q\nafter  %q", original, got)
+		}
+	}
+}
+
 func readTestFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

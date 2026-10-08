@@ -502,30 +502,53 @@ check_tarball_install() {
 }
 
 update_config_version() {
-  # Replace config.yaml's version: ... with the specified tag.
+  # Replace config.yaml's top-level version with the specified tag. The line matching
+  # mirrors the Go writer (internal/config.WriteVersion): top-level key only, in every
+  # spelling YAML accepts (version / "version" / 'version'), first occurrence only - a
+  # nested key or a later duplicate belongs to the file's own structure and must not be
+  # rewritten. A value the line cannot replace safely (block scalar / multi-line scalar)
+  # leaves the file alone on purpose: a stale version number is a display problem, a
+  # config that no longer loads is an installation that no longer starts.
   local new_tag="$1"
-  python3 - "$CONFIG_FILE" "$new_tag" <<PY
-import re, sys
-path=sys.argv[1]
-tag=sys.argv[2]
+  python3 - "$CONFIG_FILE" "$new_tag" <<'PY'
+import os, re, sys
+
+path = sys.argv[1]
+tag = sys.argv[2]
+# Same value rule as the Go writer (internal/config.versionValuePattern): what lands here
+# is a live config, and a tag with a quote or newline in it must never reach it.
+if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$", tag):
+    sys.stderr.write("版本号 %r 不合法（只允许字母、数字与 . _ + -），未写入 config.yaml\n" % tag)
+    sys.exit(0)
 with open(path, "r", encoding="utf-8") as f:
-    lines=f.readlines()
+    lines = f.readlines()
 
-out=[]
-replaced=False
-for line in lines:
-    if re.match(r'^\s*version\s*:', line):
-        out.append(f'version: "{tag}"\n')
-        replaced=True
-    else:
-        out.append(line)
+key = re.compile(r"^(['\"]?version['\"]?)\s*:(.*)$")
+replaced = False
+refused = False
+out = []
+for i, line in enumerate(lines):
+    if not replaced:
+        m = key.match(line)
+        if m:
+            value = m.group(2).strip()
+            nxt = lines[i + 1] if i + 1 < len(lines) else ""
+            if value[:1] in ("|", ">") or (value == "" and nxt[:1] in (" ", "\t")):
+                sys.stderr.write("版本号未写入：config.yaml 的 version 是多行/块标量写法，无法就地替换（原文件未改动）\n")
+                refused = True
+                break
+            out.append('version: "%s"\n' % tag)
+            replaced = True
+            continue
+    out.append(line)
 
-if not replaced:
-    # If no version field is found, insert at the beginning (near the top).
-    out.insert(0, f'version: "{tag}"\n')
-
-with open(path, "w", encoding="utf-8") as f:
-    f.writelines(out)
+if not refused:
+    if not replaced:
+        out.insert(0, 'version: "%s"\n' % tag)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.writelines(out)
+    os.replace(tmp, path)
 PY
 }
 

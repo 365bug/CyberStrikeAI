@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"cyberstrike-ai/internal/config"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -453,6 +454,48 @@ func TestApplySyncsTheReleaseVersionIntoTheLiveConfig(t *testing.T) {
 	live = readFile(t, filepath.Join(tr.install, "config.yaml"))
 	if !strings.Contains(live, `version: "v1.0.0"`) {
 		t.Fatalf("live config after rollback = %q, want the old version back", live)
+	}
+}
+
+// The same sync end to end, with the key spelled the way issue #4 was filed about: a legal
+// quoted key must be replaced in place (not appended next to), and the rollback must still
+// find a config it can read.
+func TestApplySyncsTheReleaseVersionIntoAQuotedKeyConfig(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	live := filepath.Join(tr.install, "config.yaml")
+	writeFile(t, live, "\"version\": \"v1.0.0\"\nserver:\n  port: 8088\n")
+	tr.upstreamCommit(t, "release: bump version", map[string]string{
+		"config.example.yaml": "version: \"v1.1.0\"\n",
+		"internal_service.go": "package service\n\nconst Version = \"2\"\n",
+	})
+
+	if _, err := Apply(context.Background(), opts(tr), nil); err != nil {
+		t.Fatalf("apply failed: %v", err)
+	}
+	got := readFile(t, live)
+	if strings.Count(got, "version") != 1 {
+		t.Fatalf("live config gained a duplicate version key:\n%q", got)
+	}
+	if v, err := config.FileVersion(live); err != nil || v != "v1.1.0" {
+		t.Fatalf("live config after apply reads %q (%v), want v1.1.0:\n%q", v, err, got)
+	}
+	if !strings.Contains(got, "port: 8088") {
+		t.Fatalf("the rest of the config must stay:\n%q", got)
+	}
+
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "new binary bytes")
+	writeFile(t, bin+".prev", "old binary bytes")
+	if _, err := Rollback(context.Background(), Options{Root: tr.install}); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	got = readFile(t, live)
+	if strings.Count(got, "version") != 1 {
+		t.Fatalf("rollback left a broken config:\n%q", got)
+	}
+	if v, err := config.FileVersion(live); err != nil || v != "v1.0.0" {
+		t.Fatalf("live config after rollback reads %q (%v), want v1.0.0:\n%q", v, err, got)
 	}
 }
 

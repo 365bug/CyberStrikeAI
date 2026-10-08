@@ -1761,11 +1761,22 @@ func FileVersion(path string) (string, error) {
 		}
 		return "", fmt.Errorf("读取配置文件失败: %w", err)
 	}
+	version, err := parseTopVersion(data)
+	if err != nil {
+		return "", fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	return version, nil
+}
+
+// parseTopVersion 从配置文本里取顶层 version。走 YAML 解析，version / "version" / 'version'
+// 三种写法一视同仁——读取认得的写法，写入也必须认得，否则就会在合法的引号键配置上追加出
+// 第二个 version 键（见 WriteVersion）。
+func parseTopVersion(data []byte) (string, error) {
 	var thin struct {
 		Version string `yaml:"version"`
 	}
 	if err := yaml.Unmarshal(data, &thin); err != nil {
-		return "", fmt.Errorf("解析配置文件失败: %w", err)
+		return "", err
 	}
 	return strings.TrimSpace(thin.Version), nil
 }
@@ -1774,9 +1785,22 @@ func FileVersion(path string) (string, error) {
 // 配置上，带引号或换行的值会把 YAML 写坏。
 var versionValuePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
 
+// topVersionKey 判断一行是不是顶层的 version 键，三种 YAML 都认的写法都在内：version:、
+// "version":、'version':。缩进的同名键属于别的段落，不动。
+func topVersionKey(line string) bool {
+	for _, key := range []string{"version", `"version"`, "'version'"} {
+		if strings.HasPrefix(line, key) {
+			return strings.HasPrefix(strings.TrimSpace(line[len(key):]), ":")
+		}
+	}
+	return false
+}
+
 // WriteVersion 就地替换配置文件的顶层 version 字段，保留其它每一行的原样（tarball 升级
 // 路径一直这么做）；没有这个字段就插到文件开头。返回是否真的改了。写盘走临时文件 + 原子
-// rename——这是运维者的活配置，不能留半截。
+// rename——这是运维者的活配置，不能留半截。替换后先把新文本解析回验一遍：行级替换够不着的
+// 写法（JSON 单行、多行标量……）解析失败或读不回目标值就拒绝写、原文件不动。版本号停在旧值
+// 只是页头显示问题，写坏配置是起不来。
 func WriteVersion(path, version string) (bool, error) {
 	version = strings.TrimSpace(version)
 	if version == "" {
@@ -1796,9 +1820,7 @@ func WriteVersion(path, version string) (bool, error) {
 	lines := strings.Split(string(data), "\n")
 	replaced := false
 	for i, line := range lines {
-		// 只认顶层（顶格的）version 键；缩进里同名键属于别的段落，不动。
-		rest := strings.TrimSpace(strings.TrimPrefix(line, "version"))
-		if strings.HasPrefix(line, "version") && strings.HasPrefix(rest, ":") {
+		if topVersionKey(line) {
 			lines[i] = `version: "` + version + `"`
 			replaced = true
 			break
@@ -1810,6 +1832,9 @@ func WriteVersion(path, version string) (bool, error) {
 	out := strings.Join(lines, "\n")
 	if out == string(data) {
 		return false, nil
+	}
+	if got, err := parseTopVersion([]byte(out)); err != nil || got != version {
+		return false, fmt.Errorf("version 的写法无法就地替换（改后配置解析失败或读回为 %q），已放弃写入，原文件未改动", got)
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(out), info.Mode().Perm()); err != nil {

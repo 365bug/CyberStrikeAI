@@ -52,17 +52,11 @@ type Config struct {
 	Update      UpdateConfig          `yaml:"update,omitempty" json:"update,omitempty"`
 }
 
-// UpdateConfig 一键更新的更新源（可选）：显式指定从哪个仓库/分支更新本安装。
-// 不配置时更新跟随安装目录自己跟踪的远端；两种来源都在本地解析，没有写死的仓库地址。
+// UpdateConfig 一键更新的更新源（可选）：一个仓库地址，更新跟随该仓库的默认分支。
+// 留空即官方仓库（internal/update.DefaultRepoURL），跟随镜像或自己的二开只需改这一处。
 type UpdateConfig struct {
-	// Remote 用安装树里已有的远端名指定更新源（mine/origin/upstream 或任意自定义名）。
-	Remote string `yaml:"remote,omitempty" json:"remote,omitempty"`
-	// RemoteURL 直接给出仓库地址（https/http/ssh/git/file:// 或本机绝对路径），不必先 git remote add；
-	// 与 Remote 同时配置时以地址为准（页面保存时两者互斥）。
-	RemoteURL string `yaml:"remote_url,omitempty" json:"remote_url,omitempty"`
-	// Branch 要跟踪的分支；留空时取当前分支的 upstream（没有 upstream 时取当前分支名；
-	// 非 git 目录接入时取仓库的默认分支）。
-	Branch string `yaml:"branch,omitempty" json:"branch,omitempty"`
+	// Repo 更新源仓库地址（https/http/ssh/git/file:// 或本机绝对路径）；留空 = 官方仓库。
+	Repo string `yaml:"repo,omitempty" json:"repo,omitempty"`
 }
 
 type EnsureLocalConfigResult struct {
@@ -1731,6 +1725,28 @@ func validateOpenAIOutputLimits(openAI OpenAIConfig) error {
 		return fmt.Errorf("openai.max_completion_tokens 必须为正数")
 	}
 	return nil
+}
+
+// LoadUpdateRepo 只读 update 段的 repo 字段，不加载也不校验文件其余部分：命令行一键更新
+// 必须与页面用同一个更新源，而配置里其它段落坏掉不该拦住"把源码更新好"这条修复路径。
+// 文件不存在不是错误（未配置 = 官方仓库）；YAML 解析失败则报错，不去猜更新源。
+func LoadUpdateRepo(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("读取配置文件失败: %w", err)
+	}
+	var thin struct {
+		Update struct {
+			Repo string `yaml:"repo"`
+		} `yaml:"update"`
+	}
+	if err := yaml.Unmarshal(data, &thin); err != nil {
+		return "", fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	return strings.TrimSpace(thin.Update.Repo), nil
 }
 
 func EnsureLocalConfig(path string) (EnsureLocalConfigResult, error) {

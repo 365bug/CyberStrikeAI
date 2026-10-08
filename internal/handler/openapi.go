@@ -3422,7 +3422,7 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 				"post": map[string]interface{}{
 					"tags":        []string{"系统更新"},
 					"summary":     "配置更新源（本安装从哪个仓库更新）",
-					"description": "把更新源写进 config.yaml 的 update 段：remote（已有远端名）与 remote_url（仓库地址）二选一，branch 可选。不配置时更新跟随本目录自己跟踪的远端；地址白名单为 https/http/ssh/git/file:// 与本机绝对路径（git 的 ext:: 传输会执行命令，一律拒绝）。",
+					"description": "把更新源写进 config.yaml 的 update 段：单个 repo 字段（仓库地址），更新跟随该仓库的默认分支。留空（或写空串）= 回到官方仓库 https://github.com/AIPentest/CyberStrikeAI.git。地址白名单为 https/http/ssh/git/file:// 与本机绝对路径（git 的 ext:: 传输会执行命令，一律拒绝）。",
 					"operationId": "saveUpdateSource",
 					"requestBody": map[string]interface{}{
 						"content": map[string]interface{}{
@@ -3430,17 +3430,15 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 								"schema": map[string]interface{}{
 									"type": "object",
 									"properties": map[string]interface{}{
-										"remote":    map[string]interface{}{"type": "string", "description": "安装树里已有的远端名（mine/origin/upstream/任意名）"},
-										"remoteUrl": map[string]interface{}{"type": "string", "description": "仓库地址（与 remote 二选一）"},
-										"branch":    map[string]interface{}{"type": "string", "description": "要跟踪的分支；留空按 upstream/当前分支推断"},
+										"repo": map[string]interface{}{"type": "string", "description": "更新源仓库地址；留空 = 官方仓库"},
 									},
 								},
 							},
 						},
 					},
 					"responses": map[string]interface{}{
-						"200": map[string]interface{}{"description": "已保存（返回生效的更新源）"},
-						"400": map[string]interface{}{"description": "远端名/地址/分支不合法，或两者同时给出"},
+						"200": map[string]interface{}{"description": "已保存（返回配置值与官方默认地址）"},
+						"400": map[string]interface{}{"description": "仓库地址不合法"},
 						"401": map[string]interface{}{"description": "未授权"},
 					},
 				},
@@ -3449,7 +3447,7 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 				"post": map[string]interface{}{
 					"tags":        []string{"系统更新"},
 					"summary":     "把非 git 目录接入更新源",
-					"description": "解压/打包安装所在的目录接入配置好的更新源：不带 confirm 做无副作用预览（在临时仓库里 fetch，列出会被目标版本替换的文件与会保留的运维者内容）；confirm=true 时异步执行（202 + job_id，用 /api/system/update/job 轮询）：git init、添加 origin、落地目标分支内容，运维者内容先暂存再放回，被替换的文件全部留底到 .update-backup/<时间戳>/overwritten/。已是 git 工作树时返回 409（用一键更新而不是接入）。",
+					"description": "解压/打包安装所在的目录接入配置好的更新源（未配置 = 官方仓库）：不带 confirm 做无副作用预览（在临时仓库里 fetch，列出会被目标版本替换的文件与会保留的运维者内容）；confirm=true 时异步执行（202 + job_id，用 /api/system/update/job 轮询）：git init、添加 origin、落地更新源默认分支的内容，运维者内容先暂存再放回，被替换的文件全部留底到 .update-backup/<时间戳>/overwritten/。已是 git 工作树时返回 409（用一键更新而不是接入）。",
 					"operationId": "adoptUpdateSource",
 					"requestBody": map[string]interface{}{
 						"content": map[string]interface{}{
@@ -3467,7 +3465,7 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "预览结果（plan：将被替换/保留的文件清单与总数）"},
 						"202": map[string]interface{}{"description": "接入任务已受理，返回 job_id"},
-						"400": map[string]interface{}{"description": "没有配置更新源、地址不合法、分支不合法，或要求重启但没有重启钩子"},
+						"400": map[string]interface{}{"description": "更新源地址不合法，或要求重启但没有重启钩子"},
 						"409": map[string]interface{}{"description": "目录已是 git 工作树；或有任务在进行中"},
 						"401": map[string]interface{}{"description": "未授权"},
 					},
@@ -6523,8 +6521,8 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 			"/api/system/update/check": map[string]interface{}{
 				"post": map[string]interface{}{
 					"tags":        []string{"系统更新"},
-					"summary":     "检查本安装自己的远端有无新提交",
-					"description": "对安装目录已经跟踪的远端分支执行 fetch，报告落后/领先提交数与新提交列表；取代码的来源永远是本目录自己的远端，不是任何写死的第三方仓库。检查失败返回 200 且带 checkError，不把「查不了」说成「已是最新」",
+					"summary":     "检查本安装的更新源有无新提交",
+					"description": "对配置的更新源仓库（未配置 = 官方仓库 https://github.com/AIPentest/CyberStrikeAI.git）的默认分支执行 fetch，报告落后/领先提交数与新提交列表。检查失败返回 200 且带 checkError，不把「查不了」说成「已是最新」",
 					"operationId": "checkUpdate",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
@@ -6540,7 +6538,7 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 				"post": map[string]interface{}{
 					"tags":        []string{"系统更新"},
 					"summary":     "一键更新源码并重编译",
-					"description": "快进到远端分支、重新编译二进制并原子换入（旧二进制留作 .prev 以便回滚）。本机改过源码文件或分支已分叉时拒绝执行并点名；roles/skills/tools/agents/bundles/knowledge_base/data/config.yaml 等运维者内容在合并前暂存、合并后放回，被保留的文件列在 keptContent。请求立即返回 job_id，进度用 GET /api/system/update/job 轮询；已有任务在跑时返回 409",
+					"description": "快进到更新源仓库默认分支的最新提交、重新编译二进制并原子换入（旧二进制留作 .prev 以便回滚）。本机改过源码文件或分支已分叉时拒绝执行并点名；roles/skills/tools/agents/bundles/knowledge_base/data/config.yaml 等运维者内容在合并前暂存、合并后放回，被保留的文件列在 keptContent。请求立即返回 job_id，进度用 GET /api/system/update/job 轮询；已有任务在跑时返回 409",
 					"operationId": "applyUpdate",
 					"requestBody": map[string]interface{}{
 						"content": map[string]interface{}{

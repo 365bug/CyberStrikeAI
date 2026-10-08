@@ -334,3 +334,40 @@ func TestLatestUserMessageRunesEffective(t *testing.T) {
 		t.Fatalf("custom latest user tail runes = %d", got)
 	}
 }
+
+func TestLoadUpdateRepoReadsOnlyTheSourceField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	// The rest of the file may be broken or unvalidatable; the CLI only asks for the
+	// update source, and a full config load must not be a precondition for updating.
+	if err := os.WriteFile(path, []byte("update:\n  repo: https://github.com/Sycun/CyberStrikeAI.git\nserver:\n  port: 8088\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := LoadUpdateRepo(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo != "https://github.com/Sycun/CyberStrikeAI.git" {
+		t.Fatalf("repo = %q, want the configured address", repo)
+	}
+
+	// Unset and missing files both mean "the official repository is the default".
+	if err := os.WriteFile(path, []byte("server:\n  port: 8088\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if repo, err := LoadUpdateRepo(path); err != nil || repo != "" {
+		t.Fatalf("repo = %q err = %v, want empty with no error", repo, err)
+	}
+	if repo, err := LoadUpdateRepo(filepath.Join(dir, "missing.yaml")); err != nil || repo != "" {
+		t.Fatalf("a missing config is not an error: repo = %q err = %v", repo, err)
+	}
+
+	// A file that is not YAML at all must fail loudly rather than silently fall back to
+	// the official repository (that would be an update from the wrong place).
+	if err := os.WriteFile(path, []byte("update: [not: a: map\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadUpdateRepo(path); err == nil {
+		t.Fatal("a malformed config must be an error, not a silent default")
+	}
+}

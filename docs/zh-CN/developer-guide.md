@@ -63,28 +63,27 @@ go run ./cmd/server --config config.yaml
 
 ### 它从哪里取代码
 
-从**这个目录自己的远端**，没有任何写死的第三方仓库地址。远端按 `mine → origin → upstream` 的次序在这个目录已有的
-remote 里取（都不在时取第一个 remote），分支默认取当前分支 `@{upstream}` 指向的名字（没有 upstream 时用当前分支名）。
-`upgrade.sh` 现在只是这条实现的薄壳：本目录是 git 工作树时它直接调 `./cyberstrike-ai -update`。
+从**更新源仓库**：一个仓库地址，默认就是官方仓库 `https://github.com/AIPentest/CyberStrikeAI.git`；
+更新跟随该仓库**自己的默认分支**（不用配置分支，也不写死 main），所以对一套没做过任何配置的安装，
+「从哪更新」永远有一个明确答案。`upgrade.sh` 现在只是这条实现的薄壳：本目录是 git 工作树时它直接调
+`./cyberstrike-ai -update`。
 
-### 选择更新源（config.yaml 的 update 段）
+### 更换更新源（config.yaml 的 update 段）
 
-不配置时按上面的规则跟随本树；配置后显式来源优先：
+更新源只有一个字段：仓库地址。留空 = 官方仓库；想跟随自己的二开、镜像（GitHub 访问不畅时）或别人的仓库，
+只改这一处：
 
 ```yaml
 update:
-  remote: origin        # 已有远端名（mine/origin/upstream/任意名），与 remote_url 二选一
-  # remote_url: https://github.com/AIPentest/CyberStrikeAI.git
-  branch: main          # 可选；留空按 upstream/当前分支推断
+  repo: https://github.com/AIPentest/CyberStrikeAI.git  # 一个仓库地址；留空/不写 = 官方仓库
 ```
 
-控制台的「一键更新」页可以直接编辑并保存这三项。服务端保存时校验：远端名与分支名走与更新同一套白名单，
-地址只允许 https/http/ssh/git/file:// 与本机绝对路径——git 的 `ext::` 传输会执行命令，一律拒绝。
-想让这套安装跟随官方仓库、自己的二开或别人的二开，改的都是这一处。
+控制台的「一键更新 → 更新源」区块可以直接编辑并保存这个地址（留空保存 = 回到官方仓库）。
+服务端保存时校验地址：只允许 https/http/ssh/git/file:// 与本机绝对路径——git 的 `ext::` 传输会执行命令，一律拒绝。
 
 ### 接入非 git 安装（解压/打包装的那类）
 
-一开始用 Release 包解压安装、目录里没有 `.git` 的，配好上面的地址后可在同一页执行「预览并接入」：
+一开始用 Release 包解压安装、目录里没有 `.git` 的，可在同一页执行「预览并接入」（不配置也能用默认的官方仓库）：
 预览在临时仓库里 fetch，先列出**会被目标版本替换的本机文件**与**会保留的运维者内容**；确认后目录接入
 成为 git 工作树（`git init` + 添加 origin + 落地目标分支），被替换的文件全部留底在
 `.update-backup/<时间戳>/overwritten/`，运维者内容照旧先暂存再放回，随后重编译二进制。

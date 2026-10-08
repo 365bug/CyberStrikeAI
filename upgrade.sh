@@ -5,12 +5,14 @@ set -euo pipefail
 #
 # Two installation kinds, decided at runtime from this directory itself:
 #
-#  1. git work tree (the normal case, and the only honest one for a fork):
+#  1. git work tree (the normal case):
 #     the update is delegated to the platform binary, `./cyberstrike-ai -update`, which
-#     fetches the remote *this directory already tracks*, fast-forwards, rebuilds with
-#     `go build` and swaps the binary in atomically. No repository name is hardcoded on
-#     this path, so "upgrade" can never overwrite your work with somebody else's code.
-#     Refusals (local source edits, a diverged branch) come from that same implementation
+#     fetches the configured update source (config.yaml update.repo; empty = the official
+#     repository, and one field points it at a fork or a mirror) and follows that
+#     repository's own default branch, fast-forwards, rebuilds with `go build` and swaps
+#     the binary in atomically. The CLI reads the same config field the console page
+#     saves, so the keyboard and the button update from the same place.
+#     Refusals (local source edits, diverged history) come from that same implementation
 #     and name the files/commits involved.
 #
 #  2. Plain directory (Release tarball install, no git): falls back to downloading a
@@ -64,11 +66,12 @@ Usage:
 
 What it does depends on the installation kind (detected automatically):
 
-  git work tree     Updates from the remote this directory already tracks, by calling
+  git work tree     Updates from the configured source repository (config.yaml
+                    update.repo; empty = the official repository) by calling
                     ./cyberstrike-ai -update (fetch, fast-forward, go build, swap binary).
                     --tag/--repo are ignored on this path. Your own roles/skills/tools/
                     agents/data/config are put aside and restored by the platform;
-                    local source edits or a diverged branch stop the update instead of
+                    local source edits or diverged history stop the update instead of
                     being overwritten.
   plain directory   (Release tarball install, no git) Downloads the Release tarball and
                     syncs it in with rsync --delete. --repo / GITHUB_REPO apply here.
@@ -164,22 +167,14 @@ resolve_install_kind() {
 
 show_git_source() {
   # Say out loud where the code is coming from: that is the whole point of this path.
+  # The source itself is one field (config.yaml update.repo, empty = the official
+  # repository) and the binary is the one that reads it - `-check-update` prints the
+  # exact repository and branch that would land, without changing anything.
   local branch
   branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   info "Install directory: ${ROOT_DIR}"
-  info "Branch: ${branch:-unknown}"
-
-  local remotes name url
-  remotes="$(git -C "$ROOT_DIR" remote 2>/dev/null || true)"
-  if [[ -z "$remotes" ]]; then
-    warn "This repository has no git remote, so there is nothing to fetch. Add one (git remote add ...) before updating."
-    return 0
-  fi
-  info "Remotes this directory tracks (the update pulls from its own remote, never from a hardcoded third-party one):"
-  for name in $remotes; do
-    url="$(git -C "$ROOT_DIR" config --get "remote.${name}.url" 2>/dev/null || true)"
-    info "  - ${name}: ${url:-unknown}"
-  done
+  info "Local branch: ${branch:-unknown}"
+  info "Update source: config.yaml update.repo (empty = the official repository); ./${BINARY_NAME} -check-update prints it exactly."
 }
 
 explain_no_go() {
@@ -269,10 +264,10 @@ confirm_or_exit() {
   fi
 
   if [[ "$INSTALL_KIND" == "git" ]]; then
-    warn "About to update this installation from the remote it already tracks:"
+    warn "About to update this installation from its configured update source:"
     info " - git fetch + fast-forward of ${ROOT_DIR}"
     info "   (refused with file names if source files are modified locally, or if the"
-    info "    branch has diverged - that is a merge decision, not a download)"
+    info "    local history has diverged from the source - that is a merge decision, not a download)"
     info " - go build, then the binary is swapped; the previous one is kept as ${BINARY_NAME}.prev"
     info " - your content (roles/skills/tools/agents/knowledge_base/data/config.yaml)"
     info "   is put aside before the merge and restored after it; the result lists what was kept"

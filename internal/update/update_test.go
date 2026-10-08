@@ -61,21 +61,28 @@ func (t *tree) upstreamCommit(t2 *testing.T, message string, files map[string]st
 	mustGit(t2, t.upstream, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", message)
 }
 
-func opts(root string) Options { return Options{Root: root, BinaryName: "none"} }
+// opts points an update at the tree's own source repository: the explicit address is
+// now the whole configuration, so tests name it the way an operator would.
+func opts(tr *tree) Options {
+	return Options{Root: tr.install, Repo: tr.upstream, BinaryName: "none"}
+}
 
 func TestStatusWithoutNetworkDescribesTheTree(t *testing.T) {
 	requireGit(t)
 	tr := newTree(t)
 
-	snap, err := Status(context.Background(), opts(tr.install))
+	snap, err := Status(context.Background(), opts(tr))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !snap.Installed {
 		t.Fatal("a clone must be reported as an installable tree")
 	}
-	if snap.Branch != "main" || snap.Remote != "origin" {
-		t.Errorf("branch/remote = %q/%q, want main/origin", snap.Branch, snap.Remote)
+	if snap.Branch != "main" {
+		t.Errorf("local branch = %q, want main", snap.Branch)
+	}
+	if snap.Repo != tr.upstream || !snap.RepoConfigured {
+		t.Errorf("repo = %q configured=%v, want the configured source %q", snap.Repo, snap.RepoConfigured, tr.upstream)
 	}
 	if snap.Commit == "" {
 		t.Error("commit is empty")
@@ -93,7 +100,7 @@ func TestStatusReportsTheInstallRootInAbsoluteForm(t *testing.T) {
 	// A relative config path gives filepath.Dir as "."; the page must still be able to say
 	// which directory is being updated.
 	t.Chdir(tr.install)
-	snap, err := Status(context.Background(), opts("."))
+	snap, err := Status(context.Background(), Options{Root: ".", Repo: tr.upstream, BinaryName: "none"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,12 +119,15 @@ func TestStatusReportsTheInstallRootInAbsoluteForm(t *testing.T) {
 func TestStatusOnNonGitTreeIsAStateNotAnError(t *testing.T) {
 	requireGit(t)
 	dir := t.TempDir()
-	snap, err := Status(context.Background(), opts(dir))
+	snap, err := Status(context.Background(), Options{Root: dir})
 	if err != nil {
 		t.Fatalf("a tarball install is a readable state, not a fault: %v", err)
 	}
 	if snap.Installed || snap.CheckError == "" {
 		t.Errorf("installed=%v checkError=%q, want false with a reason", snap.Installed, snap.CheckError)
+	}
+	if snap.Repo != DefaultRepoURL || snap.RepoConfigured {
+		t.Errorf("repo = %q configured=%v, want the official repository by default", snap.Repo, snap.RepoConfigured)
 	}
 }
 
@@ -127,7 +137,7 @@ func TestCheckFetchesAndListsIncoming(t *testing.T) {
 	tr.upstreamCommit(t, "second: bump service", map[string]string{"internal_service.go": "package service\n\nconst Version = \"2\"\n"})
 	tr.upstreamCommit(t, "third: new role", map[string]string{"roles/extra.yaml": "name: extra\n"})
 
-	snap, err := Check(context.Background(), opts(tr.install))
+	snap, err := Check(context.Background(), opts(tr))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +171,7 @@ func TestApplyKeepsOperatorContentAndMovesCode(t *testing.T) {
 		"internal_service.go": "package service\n\nconst Version = \"3\"\n",
 	})
 
-	res, err := Apply(context.Background(), opts(tr.install), nil)
+	res, err := Apply(context.Background(), opts(tr), nil)
 	if err != nil {
 		t.Fatalf("apply failed: %v\nresult: %+v", err, res)
 	}
@@ -210,7 +220,7 @@ func TestApplyRefusesLocalSourceEdits(t *testing.T) {
 	tr.upstreamCommit(t, "new upstream", map[string]string{"internal_service.go": "package service\n\nconst Version = \"9\"\n"})
 	writeFile(t, filepath.Join(tr.install, "internal_service.go"), "package service\n\nconst Version = \"local hand edit\"\n")
 
-	_, err := Apply(context.Background(), opts(tr.install), nil)
+	_, err := Apply(context.Background(), opts(tr), nil)
 	ue, ok := err.(*Error)
 	if !ok {
 		t.Fatalf("want *Error, got %v", err)
@@ -234,7 +244,7 @@ func TestApplyRefusesDivergedBranch(t *testing.T) {
 	mustGit(t, tr.install, "add", "my_patch.go")
 	mustGit(t, tr.install, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", "my own commit")
 
-	_, err := Apply(context.Background(), opts(tr.install), nil)
+	_, err := Apply(context.Background(), opts(tr), nil)
 	ue, ok := err.(*Error)
 	if !ok || ue.Reason != "diverged" {
 		t.Fatalf("a branch with its own commits is a merge decision, not a download; got %v", err)
@@ -244,7 +254,7 @@ func TestApplyRefusesDivergedBranch(t *testing.T) {
 func TestApplyWhenAlreadyUpToDateIsANoOp(t *testing.T) {
 	requireGit(t)
 	tr := newTree(t)
-	res, err := Apply(context.Background(), opts(tr.install), nil)
+	res, err := Apply(context.Background(), opts(tr), nil)
 	if err != nil {
 		t.Fatalf("up to date must not be an error: %v", err)
 	}
@@ -261,7 +271,7 @@ func TestRollbackMovesBackToTheRecordedCommit(t *testing.T) {
 	tr := newTree(t)
 	before := mustGit(t, tr.install, "rev-parse", "HEAD")
 	tr.upstreamCommit(t, "upstream new", map[string]string{"internal_service.go": "package service\n\nconst Version = \"7\"\n"})
-	if _, err := Apply(context.Background(), opts(tr.install), nil); err != nil {
+	if _, err := Apply(context.Background(), opts(tr), nil); err != nil {
 		t.Fatal(err)
 	}
 	// Rollback restores the binary kept before a swap; stand one up the way installBinary
@@ -292,7 +302,7 @@ func TestRollbackRefusesWhenHeadMoved(t *testing.T) {
 	requireGit(t)
 	tr := newTree(t)
 	tr.upstreamCommit(t, "upstream new", map[string]string{"internal_service.go": "package service\n\nconst Version = \"7\"\n"})
-	if _, err := Apply(context.Background(), opts(tr.install), nil); err != nil {
+	if _, err := Apply(context.Background(), opts(tr), nil); err != nil {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(tr.install, Binary)

@@ -19,8 +19,9 @@ const HANDLES = ['startUpdateApply', 'checkForUpdates', 'rollbackUpdate',
     'startRestartNow', 'refreshUpdatePage'];
 
 // The envelope shape GET /api/system/update answers with, plus what the source endpoints return.
-const emptySource = { remote: '', remoteUrl: '', branch: '', configured: false };
-const configuredSource = { remote: '', remoteUrl: 'https://github.com/Sycun/CyberStrikeAI.git', branch: 'main', configured: true };
+const officialRepo = 'https://github.com/AIPentest/CyberStrikeAI.git';
+const emptySource = { repo: '', configured: false, defaultRepo: officialRepo };
+const configuredSource = { repo: 'https://github.com/Sycun/CyberStrikeAI.git', configured: true, defaultRepo: officialRepo };
 const adoptPlan = {
     root: '/srv/csai',
     source: 'https://github.com/Sycun/CyberStrikeAI.git',
@@ -57,7 +58,9 @@ const baseStatus = {
     root: '/srv/csai',
     installed: true,
     branch: 'main',
-    remote: 'mine',
+    repo: officialRepo,
+    repoConfigured: false,
+    targetBranch: 'main',
     commit: 'a1b2c3d',
     subject: 'fix: 修好一个东西',
     committedAt: '2026-09-30 18:04:11 +0800',
@@ -101,7 +104,7 @@ const runningJob = {
     id: 'upd-1',
     state: 'running',
     started: '2026-10-01T04:00:00+08:00',
-    steps: [{ phase: 'fetch', message: '开始拉取 mine/main', at: '2026-10-01T04:00:01+08:00' }],
+    steps: [{ phase: 'fetch', message: '开始拉取更新源（默认分支 main）', at: '2026-10-01T04:00:01+08:00' }],
     restartRequested: false,
 };
 
@@ -111,7 +114,7 @@ const succeededJob = {
     started: '2026-10-01T04:00:00+08:00',
     finished: '2026-10-01T04:03:12+08:00',
     steps: [
-        { phase: 'fetch', message: 'mine/main 有 3 个新提交：a1b2c3d → f9e8d7c', at: '04:00:01' },
+        { phase: 'fetch', message: officialRepo + '（默认分支 main）有 3 个新提交：a1b2c3d → f9e8d7c', at: '04:00:01' },
         { phase: 'protect', message: '已暂存 2 个本地内容文件', at: '04:00:05' },
         { phase: 'build', message: '开始编译二进制', at: '04:00:09' },
         { phase: 'done', message: '已更新 3 个提交并换好二进制', at: '04:03:10' },
@@ -558,7 +561,7 @@ test('opening the page reads the install tree and claims nothing about the remot
     assert.match(html, /有可回滚点/);
     assert.match(html, /待并入|本机安装/, 'the console must be laid out in labelled sections');
     // behind is 0 only because nobody looked yet: that is "not checked", never "up to date".
-    assert.match(html, /还没查过远端/);
+    assert.match(html, /还没查过更新源/);
     assert.doesNotMatch(html, /已是最新/, 'a page that did not check must not say 已是最新');
     assert.doesNotMatch(html, /update\.[a-zA-Z]/, 'a raw i18n key leaked into the markup');
     assert.doesNotMatch(html, /\{\{/, 'an un-interpolated placeholder leaked into the markup');
@@ -619,10 +622,10 @@ test('a check whose request dies mid-flight releases the button and says so', as
     const html = h.html();
     assert.match(html, /检查失败：/, 'a dead request is a failure, and it has to be called one');
     assert.match(html, /network unreachable/);
-    assert.doesNotMatch(html, /正在检查远端/, 'the button must not stay frozen on "checking"');
+    assert.doesNotMatch(html, /正在检查更新源/, 'the button must not stay frozen on "checking"');
     assert.doesNotMatch(html, /update-check-btn" disabled/, 'and it must be clickable again');
     assert.doesNotMatch(html, /已是最新/, 'a request that went nowhere is not an answer about the remote');
-    assert.match(html, /还没查过远端/, 'the page falls back to the honest "nobody looked yet"');
+    assert.match(html, /还没查过更新源/, 'the page falls back to the honest "nobody looked yet"');
     assert.equal(h.toasts.length, 1);
     assert.equal(h.toasts[0].type, 'error');
     assert.equal(h.liveTimers().length, 0);
@@ -663,7 +666,7 @@ test('local edits, a diverged tree and a clean-but-unchecked tree each block the
         },
         {
             patch: { updateAvailable: false, behind: 0, blockingChanges: [] },
-            copy: /远端没有比本机更新的提交/,
+            copy: /更新源没有比本机更新的提交/,
             path: null,
         },
     ];
@@ -737,7 +740,7 @@ test('applying posts {"restart":false} and then reads the job every 1.5 seconds'
     await h.tick();
     await h.flush();
     assert.deepEqual(h.calls.map(c => c.method + ' ' + c.url), ['GET /api/system/update/job']);
-    assert.match(h.html(), /开始拉取 mine\/main/, 'each step line must be rendered as it arrives');
+    assert.match(h.html(), /开始拉取更新源/, 'each step line must be rendered as it arrives');
     assert.match(h.html(), /进行中/);
     assert.equal(h.liveTimers().length, 1);
 
@@ -852,7 +855,7 @@ test('the confirm dialog says what the update will do, and cancelling posts noth
     assert.equal(h.confirms.length, 1, 'the operator must be asked before the tree moves');
     assert.match(h.confirms[0], /重新编译/, 'the confirm must say the binary gets rebuilt: ' + h.confirms[0]);
     assert.match(h.confirms[0], /二进制/);
-    assert.match(h.confirms[0], /mine\/main/, 'the confirm must name the remote and branch being merged');
+    assert.match(h.confirms[0], /github\.com\/AIPentest\/CyberStrikeAI/, 'the confirm must name the repository being fetched');
     assert.match(h.confirms[0], /a1b2c3d/, 'the confirm must name where this machine is now');
     assert.doesNotMatch(h.confirms[0], /\{\{/, 'the confirm went out un-interpolated: ' + h.confirms[0]);
     assert.deepEqual(h.calls.map(c => c.method + ' ' + c.url), [], 'a cancelled update must not POST');
@@ -1117,25 +1120,35 @@ test('the hint describes the automatic check instead of denying any network use'
     }
 });
 
-test('the source section shows what is in effect, and saving posts all three fields', async () => {
+test('the source section shows what is in effect, and saving posts the one address', async () => {
     const h = await harness({ status: statusOf({ installed: true }), source: configuredSource });
     assert.match(h.html(), /https:\/\/github\.com\/Sycun\/CyberStrikeAI\.git/,
-        'the configured address must be visible');
+        'the effective address must be visible');
+    assert.match(h.html(), /update-source-url/, 'the editable address field must be there');
     assert.match(h.html(), /update-source-save-btn/);
 
-    h.runHandler("updateSourceFieldChanged('branch', 'release')");
+    h.runHandler("updateSourceRepoChanged('https://gitlab.com/mirror/csai.git')");
     await h.fire('saveUpdateSource');
     await h.flush();
     const save = h.calls.find(c => c.url === '/api/system/update/source');
     assert.ok(save, 'saving must hit the source endpoint');
-    assert.deepEqual(JSON.parse(save.body), {
-        remote: '', remoteUrl: 'https://github.com/Sycun/CyberStrikeAI.git', branch: 'release',
-    });
+    assert.deepEqual(JSON.parse(save.body), { repo: 'https://gitlab.com/mirror/csai.git' },
+        'the save carries exactly the one address, nothing else');
     assert.ok(h.toasts.some(t => t.type === 'success'), 'a saved source must be confirmed');
 });
 
+test('clearing the address is the way back to the official repository', async () => {
+    const h = await harness({ status: statusOf({ installed: true }), source: configuredSource });
+    h.runHandler('updateSourceRepoChanged("")');
+    await h.fire('saveUpdateSource');
+    await h.flush();
+    const save = h.calls.find(c => c.url === '/api/system/update/source');
+    assert.deepEqual(JSON.parse(save.body), { repo: '' },
+        'an empty address means \"use the official repository again\", not an error');
+});
+
 test('a refused save shows the server reason instead of a generic failure', async () => {
-    const refusal = '远端名与远端地址二选一：要么指名已有远端，要么直接给地址';
+    const refusal = '仓库地址不合法（只允许 https/http/ssh/git/file:// 或本机绝对路径）';
     const h = await harness({
         status: statusOf({ installed: true }),
         source: configuredSource,
@@ -1143,19 +1156,21 @@ test('a refused save shows the server reason instead of a generic failure', asyn
             'POST /api/system/update/source': [{ status: 400, body: { error: refusal } }],
         },
     });
-    h.runHandler("updateSourceFieldChanged('remote', 'origin')");
+    h.runHandler("updateSourceRepoChanged('ext::sh -c true')");
     await h.fire('saveUpdateSource');
     await h.flush();
-    assert.match(h.html(), /二选一/, 'the refusal must be on screen');
-    assert.ok(h.toasts.some(t => t.type === 'error' && t.msg.includes('二选一')), 'and in a toast');
-    assert.match(h.html(), /origin/, 'the typed value must survive the failed save');
+    assert.match(h.html(), /不合法/, 'the refusal must be on screen');
+    assert.ok(h.toasts.some(t => t.type === 'error' && t.msg.includes('不合法')), 'and in a toast');
+    assert.match(h.html(), /ext::sh -c true/, 'the typed value must survive the failed save');
 });
 
 test('the adopt entry appears only for a directory that is not a git installation', async () => {
-    const notGit = await harness({ status: statusOf({ installed: false }), source: configuredSource });
-    assert.match(notGit.html(), /previewAdoptSource\(\)/, 'a configured non-git tree must offer connecting');
+    // No source configured either: the official repository is the default, so connecting is
+    // always available for a non-git directory.
+    const notGit = await harness({ status: statusOf({ installed: false }), source: emptySource });
+    assert.match(notGit.html(), /previewAdoptSource\(\)/, 'a non-git tree must offer connecting even with the default source');
 
-    const gitTree = await harness({ status: statusOf({ installed: true }), source: configuredSource });
+    const gitTree = await harness({ status: statusOf({ installed: true }), source: emptySource });
     assert.doesNotMatch(gitTree.html(), /previewAdoptSource\(\)/, 'a git installation updates, it does not adopt');
 });
 

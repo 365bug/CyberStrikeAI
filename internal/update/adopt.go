@@ -56,7 +56,7 @@ type adoptionScan struct {
 // Preview builds an adoption plan without touching the directory: the fetch happens in a
 // throwaway bare repository outside it, so a failure cannot leave a half-adopted tree.
 func Preview(ctx context.Context, opts Options) (*AdoptPlan, error) {
-	root, source, branch, err := adoptPreflight(ctx, opts)
+	root, source, err := adoptPreflight(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func Preview(ctx context.Context, opts Options) (*AdoptPlan, error) {
 	if _, err := gitCmd(ctx, tmp, "init", "--quiet", "--bare"); err != nil {
 		return nil, err
 	}
-	branch, commit, subject, err := fetchSource(ctx, tmp, source, branch)
+	branch, commit, subject, err := fetchSource(ctx, tmp, source)
 	if err != nil {
 		return nil, err
 	}
@@ -90,11 +90,11 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	step := func(phase, msg string) { onStep(Step{Phase: phase, Message: msg, At: time.Now().Format(time.RFC3339)}) }
 	start := time.Now()
 
-	root, source, branch, err := adoptPreflight(ctx, opts)
+	root, source, err := adoptPreflight(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	step("preflight", fmt.Sprintf("把目录 %s 接入更新源 %s（分支 %s）", root, source, branch))
+	step("preflight", fmt.Sprintf("把目录 %s 接入更新源 %s", root, source))
 
 	if _, err := gitCmd(ctx, root, "init", "--quiet"); err != nil {
 		return nil, &Error{Reason: "init_failed", Message: "git init 失败：" + err.Error()}
@@ -110,7 +110,7 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		return nil, &Error{Reason: "init_failed", Message: "添加远端失败：" + err.Error()}
 	}
 
-	branch, commit, subject, err := fetchSource(ctx, root, source, branch)
+	branch, commit, subject, err := fetchSource(ctx, root, source)
 	if err != nil {
 		return nil, err
 	}
@@ -204,49 +204,40 @@ func Adopt(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	return res, nil
 }
 
-// adoptPreflight validates the operation's preconditions: a plain directory, a usable
-// source address, and (when given) a sane branch name. It does not touch the directory.
-func adoptPreflight(ctx context.Context, opts Options) (root, source, branch string, err error) {
+// adoptPreflight validates the operation's preconditions: a plain directory and a usable
+// source address. It does not touch the directory.
+func adoptPreflight(ctx context.Context, opts Options) (root, source string, err error) {
 	root, err = opts.installRoot()
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 	if _, err := exec.LookPath("git"); err != nil {
-		return "", "", "", &Error{Reason: "no_git", Message: "本机没有 git，无法把目录接入更新源"}
+		return "", "", &Error{Reason: "no_git", Message: "本机没有 git，无法把目录接入更新源"}
 	}
 	if _, err := gitCmd(ctx, root, "rev-parse", "--is-inside-work-tree"); err == nil {
-		return "", "", "", &Error{Reason: "already_a_repo", Message: "这个目录已经是 git 工作树：用「一键更新」，不需要接入"}
+		return "", "", &Error{Reason: "already_a_repo", Message: "这个目录已经是 git 工作树：用「一键更新」，不需要接入"}
 	}
 	if fi, statErr := os.Stat(root); statErr != nil || !fi.IsDir() {
-		return "", "", "", &Error{Reason: "bad_root", Message: "安装目录不存在：" + root}
+		return "", "", &Error{Reason: "bad_root", Message: "安装目录不存在：" + root}
 	}
-	source = strings.TrimSpace(opts.RemoteURL)
-	if source == "" {
-		return "", "", "", &Error{Reason: "no_source", Message: "还没有配置更新源地址：先填入仓库地址（配置文件的 update.remote_url）再接入"}
-	}
+	source = opts.repoURL()
 	if !ValidRemoteURL(source) {
-		return "", "", "", &Error{Reason: "bad_source", Message: "更新源地址不合法（只允许 https/http/ssh/git/file:// 或本机绝对路径）"}
+		return "", "", &Error{Reason: "bad_source", Message: "更新源仓库地址不合法（只允许 https/http/ssh/git/file:// 或本机绝对路径）"}
 	}
-	branch = strings.TrimSpace(opts.Branch)
-	if branch != "" && !ValidName(branch) {
-		return "", "", "", &Error{Reason: "bad_branch", Message: fmt.Sprintf("分支名不合法：%q", branch)}
-	}
-	return root, source, branch, nil
+	return root, source, nil
 }
 
-// fetchSource fetches one branch from source into repo and reports which branch that
-// ended up being (an empty request resolves the repository's default branch), its short
-// commit and its subject. Both callers fetch into a repository of their own.
-func fetchSource(ctx context.Context, repo, source, branch string) (string, string, string, error) {
+// fetchSource fetches the source's default branch into repo and reports which branch
+// that ended up being, its short commit and its subject. Both callers fetch into a
+// repository of their own.
+func fetchSource(ctx context.Context, repo, source string) (string, string, string, error) {
+	out, err := gitCmd(ctx, repo, "ls-remote", "--symref", source, "HEAD")
+	if err != nil {
+		return "", "", "", &Error{Reason: "fetch_failed", Message: "读取远端默认分支失败：" + err.Error()}
+	}
+	branch := parseDefaultBranch(out)
 	if branch == "" {
-		out, err := gitCmd(ctx, repo, "ls-remote", "--symref", source, "HEAD")
-		if err != nil {
-			return "", "", "", &Error{Reason: "fetch_failed", Message: "读取远端默认分支失败：" + err.Error()}
-		}
-		branch = parseDefaultBranch(out)
-		if branch == "" {
-			return "", "", "", &Error{Reason: "no_branch", Message: "无法确定远端默认分支，请在配置里写明分支（update.branch）"}
-		}
+		return "", "", "", &Error{Reason: "no_branch", Message: "无法确定远端默认分支：" + source}
 	}
 	if _, err := gitCmd(ctx, repo, "fetch", "--quiet", "--no-tags", "--recurse-submodules=no",
 		source, "+refs/heads/"+branch+":refs/remotes/origin/"+branch); err != nil {
@@ -259,24 +250,6 @@ func fetchSource(ctx context.Context, repo, source, branch string) (string, stri
 	}
 	subject, _ := gitCmd(ctx, repo, "log", "-1", "--format=%s", ref)
 	return branch, commit, subject, nil
-}
-
-// parseDefaultBranch reads "ref: refs/heads/<name>\tHEAD" out of ls-remote --symref output.
-func parseDefaultBranch(out string) string {
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "ref: refs/heads/") {
-			continue
-		}
-		rest := strings.TrimPrefix(line, "ref: refs/heads/")
-		if i := strings.IndexAny(rest, "\t "); i >= 0 {
-			rest = rest[:i]
-		}
-		if ValidName(rest) {
-			return rest
-		}
-	}
-	return ""
 }
 
 // scanAdoption compares the directory against the tracked files of ref in repo.

@@ -2,27 +2,41 @@ package main
 
 import (
 	"context"
+	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/update"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 // The same one-click update the console page drives, for the two cases a page cannot
 // serve: the process is not running at all, and somebody is ssh'd in with a keyboard.
 // Keeping it in the binary rather than only in a shell script means one implementation of
-// "fetch, fast-forward, rebuild, swap" instead of two that can disagree.
+// "fetch, fast-forward, rebuild, swap" instead of two that can disagree. The update
+// source is read from the same config.yaml field the page saves to, so the keyboard and
+// the button can never update from different repositories.
 func updateCommandIfNeeded(configPath string, check, apply, rollback bool) (bool, int) {
 	if !check && !apply && !rollback {
 		return false, 0
 	}
 	root := filepath.Dir(configPath)
-	opts := update.Options{Root: root}
+	repo, err := config.LoadUpdateRepo(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取更新源失败: %v\n", err)
+		return true, 1
+	}
+	opts := update.Options{Root: root, Repo: repo}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
 
+	source := strings.TrimSpace(repo)
+	if source == "" {
+		source = update.DefaultRepoURL + "（官方仓库默认）"
+	}
 	fmt.Printf("安装目录：%s\n", root)
+	fmt.Printf("更新源：%s\n", source)
 	switch {
 	case check:
 		snap, err := update.Check(ctx, opts)
@@ -62,12 +76,16 @@ func printSnapshot(s *update.Snapshot) {
 		fmt.Printf("这个目录不是 git 工作树（%s），无法自动更新\n", s.Root)
 		return
 	}
-	fmt.Printf("分支 %s / 远端 %s / 提交 %s (%s)\n", s.Branch, s.Remote, s.Commit, s.Subject)
+	target := s.TargetBranch
+	if target == "" {
+		target = "?"
+	}
+	fmt.Printf("本机分支 %s / 提交 %s (%s)，更新源默认分支 %s\n", s.Branch, s.Commit, s.Subject, target)
 	if s.CheckError != "" {
 		fmt.Printf("检查失败：%s\n", s.CheckError)
 		return
 	}
-	fmt.Printf("远端最新 %s (%s)，落后 %d 个提交，本地领先 %d 个提交\n", s.RemoteCommit, s.RemoteSubject, s.Behind, s.Ahead)
+	fmt.Printf("更新源最新 %s (%s)，落后 %d 个提交，本地领先 %d 个提交\n", s.RemoteCommit, s.RemoteSubject, s.Behind, s.Ahead)
 	for _, c := range s.Incoming {
 		fmt.Printf("  ○ %s %s\n", c.Commit, c.Subject)
 	}

@@ -101,8 +101,8 @@ Important distinctions:
 - `fofa:execute` is kept for backward compatibility, but it now protects the Reconnaissance page for FOFA, ZoomEye, Quake, and Shodan searches.
 - `mcp:write` manages external MCP configuration; it is separate from external tool execution.
 - One-click update is two permissions: `update:read` shows the installed version and the gap against
-  the remote, while `update:apply` pulls this installation's own repository, rebuilds the platform
-  binary and swaps it. The mutating side additionally requires the session to hold that permission
+  the update source, while `update:apply` pulls the configured source repository's default branch
+  (the official repository by default), rebuilds the platform binary and swaps it. The mutating side additionally requires the session to hold that permission
   with `all` scope - one machine has one source tree, so an `assigned`/`own` session must not be able
   to move the code everybody else is running.
 - `robot:write` manages robot configuration and the test endpoint. Chatbot conversations use the bound user or configured service account's business permissions.

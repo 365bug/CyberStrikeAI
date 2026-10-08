@@ -36,13 +36,14 @@ type UpdateHandler struct {
 	// request asked for a restart, because an unsupervised process that exits stays
 	// exited - "I restarted you" would be a lie on most deployments.
 	restart func()
-	// source reports the configured update source (config.yaml update section) as the
-	// operator last saved it; empty strings mean "not configured". A function rather
-	// than a value because the config can change while the process runs.
-	source func() (remote, remoteURL, branch string)
+	// source reports the configured update source (config.yaml update.repo) as the
+	// operator last saved it; an empty string means "not configured" and the official
+	// repository is used. A function rather than a value because the config can change
+	// while the process runs.
+	source func() string
 	// saveSource persists a new source through the config layer; nil means this start
 	// has no config to write to.
-	saveSource func(remote, remoteURL, branch string) error
+	saveSource func(repo string) error
 	// baseline is the binary this process is actually running: the file on disk at
 	// construction time. An update, a rollback or a CLI run that replaces it leaves a
 	// different file behind, and that difference is what "restart to activate" means.
@@ -81,7 +82,7 @@ func (j *updateJob) view() *updateJob {
 // a SetAudit the assembly has to remember: forgetting here is a compile error instead of
 // a privileged endpoint that writes no audit records at all.
 func NewUpdateHandler(root string, logger *zap.Logger, auditSvc *audit.Service, restart func(),
-	source func() (remote, remoteURL, branch string), saveSource func(remote, remoteURL, branch string) error) *UpdateHandler {
+	source func() string, saveSource func(repo string) error) *UpdateHandler {
 	return &UpdateHandler{
 		root:       root,
 		logger:     logger,
@@ -121,20 +122,23 @@ func restartSupervised() bool {
 func (h *UpdateHandler) options() update.Options {
 	opts := update.Options{Root: h.root}
 	if h.source != nil {
-		opts.Remote, opts.RemoteURL, opts.Branch = h.source()
+		opts.Repo = h.source()
 	}
 	return opts
 }
 
-// sourceView is the configured source as the page edits it (empty strings = unset).
+// sourceView is the configured source as the page edits it: the address (empty = the
+// official repository) plus the default, so the page never hardcodes a URL the server
+// would disagree with.
 func (h *UpdateHandler) sourceView() gin.H {
-	var remote, remoteURL, branch string
+	repo := ""
 	if h.source != nil {
-		remote, remoteURL, branch = h.source()
+		repo = strings.TrimSpace(h.source())
 	}
 	return gin.H{
-		"remote": remote, "remoteUrl": remoteURL, "branch": branch,
-		"configured": remote != "" || remoteURL != "" || branch != "",
+		"repo":        repo,
+		"configured":  repo != "",
+		"defaultRepo": update.DefaultRepoURL,
 	}
 }
 
@@ -167,58 +171,43 @@ func (h *UpdateHandler) Check(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	h.record(c, "update.check", resultOf(snap.CheckError), fmt.Sprintf("检查更新：%s/%s", snap.Remote, snap.Branch), map[string]interface{}{
+	h.record(c, "update.check", resultOf(snap.CheckError), fmt.Sprintf("检查更新：%s（默认分支 %s）", snap.Repo, snap.TargetBranch), map[string]interface{}{
 		"commit": snap.Commit, "remote_commit": snap.RemoteCommit, "behind": snap.Behind, "error": snap.CheckError,
 	})
 	c.JSON(http.StatusOK, gin.H{"status": snap})
 }
 
-// SaveSource answers POST /api/system/update/source: the operator picks what this
-// installation updates from - the official repository, their own fork, or a second
-// development line - and the choice lands in the update section of config.yaml. A remote
-// name and an address are two ways to say the same thing and are refused together rather
-// than silently ordered.
+// SaveSource answers POST /api/system/update/source: the operator picks which repository
+// this installation updates from - the official one, a mirror, or their own fork - and
+// the choice lands in the update section of config.yaml. An empty address clears the
+// setting, which means the official repository again.
 func (h *UpdateHandler) SaveSource(c *gin.Context) {
 	var body struct {
-		Remote    string `json:"remote"`
-		RemoteURL string `json:"remoteUrl"`
-		Branch    string `json:"branch"`
+		Repo string `json:"repo"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体不是合法 JSON"})
 		return
 	}
-	body.Remote = strings.TrimSpace(body.Remote)
-	body.RemoteURL = strings.TrimSpace(body.RemoteURL)
-	body.Branch = strings.TrimSpace(body.Branch)
-	if body.Remote != "" && body.RemoteURL != "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "远端名与远端地址二选一：要么指名已有远端，要么直接给地址"})
-		return
-	}
-	if body.Remote != "" && !update.ValidName(body.Remote) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "远端名不合法：" + body.Remote})
-		return
-	}
-	if body.RemoteURL != "" && !update.ValidRemoteURL(body.RemoteURL) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "地址不合法（只允许 https/http/ssh/git/file:// 或本机绝对路径）"})
-		return
-	}
-	if body.Branch != "" && !update.ValidName(body.Branch) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "分支名不合法：" + body.Branch})
+	body.Repo = strings.TrimSpace(body.Repo)
+	if body.Repo != "" && !update.ValidRemoteURL(body.Repo) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仓库地址不合法（只允许 https/http/ssh/git/file:// 或本机绝对路径）"})
 		return
 	}
 	if h.saveSource == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "本次启动没有接入配置保存，更新源改不了"})
 		return
 	}
-	if err := h.saveSource(body.Remote, body.RemoteURL, body.Branch); err != nil {
+	if err := h.saveSource(body.Repo); err != nil {
 		h.record(c, "update.source", "failure", "保存更新源失败: "+err.Error(), map[string]interface{}{"error": err.Error()})
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败：" + err.Error()})
 		return
 	}
-	h.record(c, "update.source", "success", "更新源已保存", map[string]interface{}{
-		"remote": body.Remote, "remote_url": body.RemoteURL, "branch": body.Branch,
-	})
+	message := "更新源已保存：" + body.Repo
+	if body.Repo == "" {
+		message = "已恢复默认更新源（官方仓库）"
+	}
+	h.record(c, "update.source", "success", message, map[string]interface{}{"repo": body.Repo})
 	c.JSON(http.StatusOK, gin.H{"source": h.sourceView()})
 }
 

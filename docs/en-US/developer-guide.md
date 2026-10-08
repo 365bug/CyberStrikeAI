@@ -58,34 +58,32 @@ additionally requires a global (`all` scope) session: one machine has one source
 
 ### Where the code comes from
 
-From **the remote this directory already tracks**; no third-party repository is hardcoded. The remote
-is picked from the ones this tree has, in the order `mine`, `origin`, `upstream` (falling back to the
-first remote when none of those names exists), and the branch defaults to what the current branch's
-`@{upstream}` names (the current branch itself when there is no upstream). `upgrade.sh` is now a thin
-shell over the same implementation: when this directory is a git work tree it just calls
-`./cyberstrike-ai -update`.
+From **the update source repository**: one address, the official repository
+`https://github.com/AIPentest/CyberStrikeAI.git` by default, and the update follows that repository's
+**own default branch** (nothing about branches is configured, and "main" is not hardcoded), so an
+installation with no configuration at all still has exactly one answer to "where does an update come
+from". `upgrade.sh` is now a thin shell over the same implementation: when this directory is a git
+work tree it just calls `./cyberstrike-ai -update`.
 
-### Choosing the source (the update section of config.yaml)
+### Changing the source (the update section of config.yaml)
 
-Unset, the rules above apply; set, the explicit choice wins:
+The update source is a single field: a repository address. Empty means the official repository; to
+follow your own fork, a mirror (when GitHub is hard to reach), or somebody else's repository, this is
+the one place to change:
 
 ```yaml
 update:
-  remote: origin        # an existing remote name (mine/origin/upstream/anything), or remote_url instead
-  # remote_url: https://github.com/AIPentest/CyberStrikeAI.git
-  branch: main          # optional; defaults to @{upstream} / the current branch
+  repo: https://github.com/AIPentest/CyberStrikeAI.git  # one repository address; empty/absent = the official repository
 ```
 
-The console page edits and saves all three. Saving validates: remote and branch names go through the
-same allowlist an update uses, and the address allowlist is https/http/ssh/git/file plus local
-absolute paths - git's `ext::` transport executes commands and is rejected outright. Following the
-official repository, your own fork, or somebody else's second-development repository is exactly the
-choice this section expresses.
+The console's "Update source" block edits and saves this address (saving it empty goes back to the
+official repository). Saving validates the address against an allowlist: https/http/ssh/git/file plus
+local absolute paths - git's `ext::` transport executes commands and is rejected outright.
 
 ### Connecting a non-git installation (the tarball kind)
 
-An installation that started as an unpacked Release archive has no `.git`; once a source is saved it
-can be connected from the same page: the preview fetches in a throwaway repository and first lists
+An installation that started as an unpacked Release archive has no `.git`; it can be connected from
+the same page (the default official repository works without any configuration): the preview fetches in a throwaway repository and first lists
 **the local files the target would replace** and **the operator content that will be kept**; on
 confirm the directory becomes a git work tree (`git init`, origin added, the target branch checked
 out), every replaced file is kept under `.update-backup/<timestamp>/overwritten/`, operator content

@@ -32,7 +32,7 @@ let updateWatchdogTimer = null;     // 重启守侧自己的定时器，跟任�
 let updateWatchdogDeadline = 0;
 let updateWatchdogSlow = null;      // null=还没超时；'running'=仍由旧进程应答；'down'=服务没回来
 let updateAutoCheckDone = false; // 每个会话只自动查一次远端，不每次重绘都去打扰
-let updateSourceDraft = null;    // 编辑中的更新源；null=还贴着服务端保存的值
+let updateSourceDraft = null;    // 编辑中的更新源仓库地址；null=还贴着服务端保存的值
 let updateSourceError = '';      // 最近一次保存/接入失败的原因，画在区块里
 let updateAdoptPlan = null;      // 预览回来的接入计划；确认后清掉
 
@@ -47,21 +47,17 @@ function updateT(key, opts) {
 }
 
 function updateSourceOf() {
-    return (updateConsoleState && updateConsoleState.source) || { remote: '', remoteUrl: '', branch: '', configured: false };
+    return (updateConsoleState && updateConsoleState.source) || { repo: '', configured: false, defaultRepo: '' };
 }
 
 // 草稿优先：轮询重绘不许把正在输入的地址冲掉；保存成功后草稿丢弃、回到服务端的值。
-function updateSourceField(field) {
-    if (updateSourceDraft && typeof updateSourceDraft[field] === 'string') return updateSourceDraft[field];
-    return updateSourceOf()[field] || '';
+function updateSourceRepo() {
+    if (typeof updateSourceDraft === 'string') return updateSourceDraft;
+    return updateSourceOf().repo || '';
 }
 
-function updateSourceFieldChanged(field, value) {
-    if (!updateSourceDraft) {
-        const s = updateSourceOf();
-        updateSourceDraft = { remote: s.remote || '', remoteUrl: s.remoteUrl || '', branch: s.branch || '' };
-    }
-    updateSourceDraft[field] = String(value == null ? '' : value);
+function updateSourceRepoChanged(value) {
+    updateSourceDraft = String(value == null ? '' : value);
 }
 
 // scheduleUpdateAutoCheck answers the question the page exists to answer, without making
@@ -151,7 +147,7 @@ async function fetchUpdateStatus() {
         supervised: !!r.data.supervised,
         needsRestart: !!r.data.needsRestart,
         binaryBuiltAt: r.data.binaryBuiltAt || '',
-        source: r.data.source || { remote: '', remoteUrl: '', branch: '', configured: false },
+        source: r.data.source || { repo: '', configured: false, defaultRepo: '' },
     };
     noteRestartDefault();
     return updateConsoleState;
@@ -434,10 +430,9 @@ function updateRestartRequested() {
 
 function updateConfirmText(status, restart) {
     const base = updateT('confirmApply', {
-        remote: status.remote || '-',
-        branch: status.branch || '-',
-        commit: status.commit || '-',
+        repo: status.repo || '-',
         target: status.remoteCommit || '-',
+        commit: status.commit || '-',
         n: updateBehindCount(status),
     });
     return base + ' ' + (restart ? updateT('confirmRestartYes') : updateT('confirmRestartNo'));
@@ -516,19 +511,18 @@ async function rollbackUpdate() {
     }, 'rollback');
 }
 
-// 更新源：服务端负责校验与写入（config.yaml 的 update 段），这里只做搬运与说明。
+// 更新源：服务端负责校验与写入（config.yaml update 段的单个 repo 字段），这里只做搬运与说明。
+// 留空提交 = 回到官方仓库，和"从没配过"是同一种状态。
 async function saveUpdateSource() {
     if (updateBusy) return;
     const body = {
-        remote: updateSourceField('remote').trim(),
-        remoteUrl: updateSourceField('remoteUrl').trim(),
-        branch: updateSourceField('branch').trim(),
+        repo: updateSourceRepo().trim(),
     };
     updateSourceError = '';
     await withUpdateBusy(async () => {
         const r = await runUpdateRequest('POST', '/api/system/update/source', body);
         if (!r.ok) {
-            // 服务端的拒绝文案（二选一、地址不合法……）就是要展示的那句，不在这里另编。
+            // 服务端的拒绝文案（地址不合法……）就是要展示的那句，不在这里另编。
             updateSourceError = updateT('sourceSaveFailed', { reason: r.error });
             renderUpdateConsole();
             notify(updateSourceError, 'error');
@@ -609,29 +603,19 @@ function updateMark(ok, yesKey, noKey, reason) {
 
 function renderUpdateSourceBody(status) {
     const src = updateSourceOf();
+    const defaultRepo = src.defaultRepo || '';
     const parts = [];
-    parts.push('<div class="update-hint">' + escapeHtml(src.configured ? updateT('sourceFromConfig') : updateT('sourceFromTracked')) + '</div>');
-    if (status.remoteUrl) {
-        parts.push('<div class="update-facts">' + updateFact(updateT('sourceUrl'), status.remoteUrl) + '</div>');
-    }
-    if (status.remote) {
-        parts.push('<div class="update-facts">' + updateFact(updateT('sourceRemote'), status.remote) + '</div>');
-    }
-    if (status.branch) {
-        parts.push('<div class="update-facts">' + updateFact(updateT('sourceBranch'), status.branch) + '</div>');
+    parts.push('<div class="update-hint">' + escapeHtml(src.configured ? updateT('sourceFromConfig') : updateT('sourceIsDefault', { repo: defaultRepo })) + '</div>');
+    if (status.repo) {
+        parts.push('<div class="update-facts">' + updateFact(updateT('sourceUrl'), status.repo) + '</div>');
     }
     // 手输错误属于页面自己的状态，重绘（轮询）不能把它冲掉。
     const disabled = updateBusy ? ' disabled data-state-disabled="true"' : '';
     parts.push('<div class="update-source-form">' +
         '<label>' + escapeHtml(updateT('sourceUrlLabel')) +
-        '<input type="text" class="update-source-input update-source-url" value="' + escapeAttr(updateSourceField('remoteUrl')) +
-        '" placeholder="https://github.com/owner/repo.git" oninput="updateSourceFieldChanged(\'remoteUrl\', this.value)"></label>' +
-        '<label>' + escapeHtml(updateT('sourceRemoteLabel')) +
-        '<input type="text" class="update-source-input update-source-remote" value="' + escapeAttr(updateSourceField('remote')) +
-        '" placeholder="origin" oninput="updateSourceFieldChanged(\'remote\', this.value)"></label>' +
-        '<label>' + escapeHtml(updateT('sourceBranchLabel')) +
-        '<input type="text" class="update-source-input update-source-branch" value="' + escapeAttr(updateSourceField('branch')) +
-        '" placeholder="main" oninput="updateSourceFieldChanged(\'branch\', this.value)"></label>' +
+        '<input type="text" class="update-source-input update-source-url" value="' + escapeAttr(updateSourceRepo()) +
+        '" placeholder="' + escapeAttr(defaultRepo) + '" oninput="updateSourceRepoChanged(this.value)"></label>' +
+        '<div class="update-hint">' + escapeHtml(updateT('sourceRepoHint', { repo: defaultRepo })) + '</div>' +
         '<div class="update-actions"><button class="btn-secondary update-source-save-btn"' + disabled +
         ' data-require-permission="update:apply" onclick="saveUpdateSource()">' +
         escapeHtml(updateT('sourceSaveBtn')) + '</button></div></div>');
@@ -645,10 +629,6 @@ function renderUpdateSourceBody(status) {
 }
 
 function renderAdoptBody() {
-    const typedUrl = updateSourceField('remoteUrl') || updateSourceField('remote');
-    if (!updateSourceOf().configured && !typedUrl) {
-        return '<div class="update-hint">' + escapeHtml(updateT('adoptNeedsSource')) + '</div>';
-    }
     const parts = [];
     parts.push('<div class="update-hint">' + escapeHtml(updateT('adoptHint')) + '</div>');
     const disabled = updateBusy ? ' disabled data-state-disabled="true"' : '';
@@ -683,7 +663,6 @@ function renderUpdateInstallBody(status) {
     const facts = [
         updateFact(updateT('root'), status.root),
         updateFact(updateT('branch'), status.branch),
-        updateFact(updateT('remote'), status.remote),
         updateFact(updateT('commit'), status.commit),
         updateFact(updateT('committedAt'), status.committedAt),
         updateFact(updateT('subject'), status.subject),
@@ -721,8 +700,9 @@ function renderUpdateRemoteBody(status) {
     if (status.ahead > 0) {
         parts.push('<div class="update-warn">' + escapeHtml(updateT('aheadCount', { n: status.ahead })) + '</div>');
     }
-    if (status.remoteCommit) {
+    if (status.targetBranch || status.remoteCommit) {
         parts.push('<div class="update-facts">' +
+            updateFact(updateT('sourceBranch'), status.targetBranch) +
             updateFact(updateT('remoteHead'), status.remoteCommit) +
             updateFact(updateT('remoteSubject'), status.remoteSubject) + '</div>');
     }
@@ -1003,4 +983,4 @@ window.renderUpdateConsole = renderUpdateConsole;
 window.saveUpdateSource = saveUpdateSource;
 window.previewAdoptSource = previewAdoptSource;
 window.confirmAdoptSource = confirmAdoptSource;
-window.updateSourceFieldChanged = updateSourceFieldChanged;
+window.updateSourceRepoChanged = updateSourceRepoChanged;

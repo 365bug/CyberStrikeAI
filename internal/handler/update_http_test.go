@@ -33,7 +33,7 @@ func newUpdateRouter(root string, restart func()) (*gin.Engine, *UpdateHandler) 
 }
 
 func newUpdateRouterWithSource(root string, restart func(),
-	source func() (string, string, string), save func(string, string, string) error) (*gin.Engine, *UpdateHandler) {
+	source func() string, save func(string) error) (*gin.Engine, *UpdateHandler) {
 	gin.SetMode(gin.TestMode)
 	h := NewUpdateHandler(root, nil, nil, restart, source, save)
 	router := gin.New()
@@ -191,17 +191,11 @@ func TestUpdateRollbackWithoutARecordedUpdateIsAConflict(t *testing.T) {
 func TestUpdateSourceSaveValidatesBeforeWriting(t *testing.T) {
 	var saved []string
 	router, _ := newUpdateRouterWithSource(t.TempDir(), nil,
-		func() (string, string, string) { return "", "", "" },
-		func(r, u, b string) error { saved = append(saved, r+"|"+u+"|"+b); return nil })
+		func() string { return "" },
+		func(repo string) error { saved = append(saved, repo); return nil })
 
-	// A name and an address are two ways to say the same thing; guessing which one the
-	// operator meant is worse than asking again.
-	w := doUpdate(router, http.MethodPost, "/api/system/update/source", `{"remote":"origin","remoteUrl":"https://github.com/x/y.git"}`)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d body = %s, want 400 for remote+remoteUrl together", w.Code, w.Body)
-	}
 	// git's ext:: transport runs commands; it must never reach the config.
-	w = doUpdate(router, http.MethodPost, "/api/system/update/source", `{"remoteUrl":"ext::sh -c true"}`)
+	w := doUpdate(router, http.MethodPost, "/api/system/update/source", `{"repo":"ext::sh -c true"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body = %s, want 400 for an ext:: address", w.Code, w.Body)
 	}
@@ -209,19 +203,28 @@ func TestUpdateSourceSaveValidatesBeforeWriting(t *testing.T) {
 		t.Fatalf("a refused save must not reach the config layer: %v", saved)
 	}
 
-	// A valid save is trimmed and lands in the config layer as three values.
-	w = doUpdate(router, http.MethodPost, "/api/system/update/source", `{"remoteUrl":" https://github.com/Sycun/CyberStrikeAI.git ","branch":"main"}`)
+	// A valid save is trimmed and lands in the config layer as one address.
+	w = doUpdate(router, http.MethodPost, "/api/system/update/source", `{"repo":" https://github.com/Sycun/CyberStrikeAI.git "}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s, want 200", w.Code, w.Body)
 	}
-	if len(saved) != 1 || saved[0] != "|https://github.com/Sycun/CyberStrikeAI.git|main" {
-		t.Fatalf("saved = %v, want the trimmed address and branch", saved)
+	if len(saved) != 1 || saved[0] != "https://github.com/Sycun/CyberStrikeAI.git" {
+		t.Fatalf("saved = %v, want the trimmed address", saved)
+	}
+
+	// An empty address is the way back to the official repository, not an error.
+	w = doUpdate(router, http.MethodPost, "/api/system/update/source", `{"repo":""}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200 for the reset-to-default save", w.Code, w.Body)
+	}
+	if len(saved) != 2 || saved[1] != "" {
+		t.Fatalf("saved = %v, want the reset to reach the config layer", saved)
 	}
 }
 
 func TestUpdateStatusCarriesTheConfiguredSource(t *testing.T) {
 	router, _ := newUpdateRouterWithSource(t.TempDir(), nil,
-		func() (string, string, string) { return "", "https://github.com/Sycun/CyberStrikeAI.git", "main" }, nil)
+		func() string { return "https://github.com/Sycun/CyberStrikeAI.git" }, nil)
 
 	w := doUpdate(router, http.MethodGet, "/api/system/update", "")
 	if w.Code != http.StatusOK {
@@ -229,22 +232,27 @@ func TestUpdateStatusCarriesTheConfiguredSource(t *testing.T) {
 	}
 	var body struct {
 		Source struct {
-			Remote     string `json:"remote"`
-			RemoteURL  string `json:"remoteUrl"`
-			Branch     string `json:"branch"`
-			Configured bool   `json:"configured"`
+			Repo        string `json:"repo"`
+			Configured  bool   `json:"configured"`
+			DefaultRepo string `json:"defaultRepo"`
 		} `json:"source"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if !body.Source.Configured || body.Source.RemoteURL != "https://github.com/Sycun/CyberStrikeAI.git" || body.Source.Branch != "main" {
-		t.Fatalf("source = %+v, want the configured address and branch", body.Source)
+	if !body.Source.Configured || body.Source.Repo != "https://github.com/Sycun/CyberStrikeAI.git" {
+		t.Fatalf("source = %+v, want the configured address", body.Source)
+	}
+	if body.Source.DefaultRepo != update.DefaultRepoURL {
+		t.Fatalf("defaultRepo = %q, want the official repository the page offers as the default", body.Source.DefaultRepo)
 	}
 }
 
-func TestUpdateAdoptPreviewRefusesWithoutASource(t *testing.T) {
-	router, _ := newUpdateRouter(t.TempDir(), nil)
+func TestUpdateAdoptRefusesAnAddressGitMustNeverSee(t *testing.T) {
+	// A plain directory with an unusable source: the refusal must come back before any
+	// fetch, so this test never touches the network.
+	router, _ := newUpdateRouterWithSource(t.TempDir(), nil,
+		func() string { return "ext::sh -c true" }, nil)
 
 	w := doUpdate(router, http.MethodPost, "/api/system/update/adopt", `{}`)
 	if w.Code != http.StatusBadRequest {
@@ -254,8 +262,8 @@ func TestUpdateAdoptPreviewRefusesWithoutASource(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body["reason"] != "no_source" {
-		t.Fatalf("reason = %v, want no_source so the page can say what is missing", body["reason"])
+	if body["reason"] != "bad_source" {
+		t.Fatalf("reason = %v, want bad_source so the page can say what is wrong", body["reason"])
 	}
 }
 

@@ -114,7 +114,7 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 
 	// A refusal is not the end of the timeline: the page renders these lines, so the first
 	// one says what was looked at even when the answer is "nothing to do".
-	step("preflight", fmt.Sprintf("检查安装目录 %s（分支 %s / 远端 %s / 提交 %s）", snap.Root, snap.Branch, snap.sourceLabel(), snap.Commit))
+	step("preflight", fmt.Sprintf("检查安装目录 %s（本机分支 %s / 更新源 %s / 提交 %s）", snap.Root, snap.Branch, snap.sourceLabel(), snap.Commit))
 
 	if !snap.Installed {
 		return nil, &Error{Reason: "not_a_repo", Message: "这个目录不是 git 工作树，无法自动更新"}
@@ -147,7 +147,7 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		}, nil
 	}
 
-	step("fetch", fmt.Sprintf("%s/%s 有 %d 个新提交：%s → %s", snap.sourceLabel(), snap.Branch, snap.Behind, snap.Commit, snap.RemoteCommit))
+	step("fetch", fmt.Sprintf("%s（默认分支 %s）有 %d 个新提交：%s → %s", snap.sourceLabel(), snap.TargetBranch, snap.Behind, snap.Commit, snap.RemoteCommit))
 
 	// Put operator-owned content aside, and clear the paths the incoming change would
 	// write to, so the fast-forward cannot be refused by "your local changes would be

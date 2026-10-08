@@ -270,21 +270,22 @@ If server logs show `client sent an HTTP request to an HTTPS server`, a client i
 ### Upgrade and Compatibility
 
 **Prefer the platform's own one-click update** (console System settings -> One-click update, or
-`./cyberstrike-ai -update` / `-check-update` / `-update-rollback`): it pulls **the remote this
-installation directory already tracks**, fast-forwards, rebuilds and swaps the binary atomically, keeps
-your `roles/skills/tools/agents/data/config.yaml` untouched (the result names every file it
-kept), and refuses - rather than overwrites - when source is modified locally or the branch has
-diverged. See the [deployment guide](docs/en-US/deployment.md).
+`./cyberstrike-ai -update` / `-check-update` / `-update-rollback`): it pulls the newest commit of the
+**update source repository**'s default branch (the official repository by default; one setting points
+it at your own fork or a mirror), fast-forwards, rebuilds and swaps the binary atomically, keeps your
+`roles/skills/tools/agents/data/config.yaml` untouched (the result names every file it kept), and
+refuses - rather than overwrites - when source is modified locally or the local history has diverged.
+See the [deployment guide](docs/en-US/deployment.md).
 
 `upgrade.sh` still works: when this directory is a git work tree it is a thin shell over the command
 above; only a non-git (tarball) installation falls back to the old "download a GitHub Release and
 rsync it in" path, where the source repository comes from `--repo owner/name` or `GITHUB_REPO` and the
 built-in default applies only when neither is given (with a warning naming the repository).
 
-The update source is one setting, in the `update` section of `config.yaml` or right on the console
-page - the official repository, your own fork, or somebody else's fork. An installation unpacked from
-a Release archive (no git) can be previewed and connected from the same page and updates in one click
-from then on.
+The update source is one setting, a repository address in the `update` section of `config.yaml` or
+right on the console page - the official repository, your own fork, or somebody else's fork. An
+installation unpacked from a Release archive (no git) can be previewed and connected from the same
+page and updates in one click from then on.
 
 **CyberStrikeAI upgrade script:**
 1. (First time) enable the script: `chmod +x upgrade.sh`

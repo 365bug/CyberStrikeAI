@@ -100,7 +100,9 @@ function setLoginPasswordVisible(visible) {
         button.setAttribute('aria-pressed', String(visible));
         const key = visible ? 'login.hidePassword' : 'login.showPassword';
         button.setAttribute('data-i18n', key);
-        button.textContent = typeof window.t === 'function' ? window.t(key) : (visible ? '隐藏密码' : '显示密码');
+        const label = typeof window.t === 'function' ? window.t(key) : (visible ? '隐藏密码' : '显示密码');
+        button.setAttribute('aria-label', label);
+        button.setAttribute('title', label);
     }
 }
 

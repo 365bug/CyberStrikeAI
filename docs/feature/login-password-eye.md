@@ -22,3 +22,7 @@ REQ-003 / AC-003: 图标随状态切换，显示密码/隐藏密码标签和悬�
 
 修改 index.html 的按钮内部结构，style.css 的局部布局和交互样式，auth.js 的标签同步，扩充已有 password-feedback.test.cjs 的状态/标签断言。
 验证：已有密码反馈测试、JS syntax、diff check，实际浏览器桌面/窄屏与语言、键盘切换检查。回退可 revert 本功能代码提交。发布记录在 CHANGELOG.md Unreleased；不合并或发布。
+
+## F4 Implementation
+
+已替换独立文字按钮为输入框内 20px SVG 眼睛，44px 原生按钮点击区域，登录两输入框最小高度 48px；支持主题色及 focus-visible。JS 不再替换按钮 textContent，使用 aria-label/title 同步现有翻译键；模板标记支持语言重绘。更新 CSS/auth.js 缓存版本。已有密码反馈测试 4/4、JS syntax 和 diff check 通过。

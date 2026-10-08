@@ -6551,19 +6551,59 @@ html[data-theme="dark"] .chat-input-container .send-btn:disabled::before {
 }
 
 .login-password-field {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    position: relative;
 }
 
-.login-password-field input {
+.login-form .login-password-field input[type="password"],
+.login-form .login-password-field input[type="text"] {
     min-width: 0;
-    flex: 1;
+    width: 100%;
+    padding-inline-end: 52px;
 }
 
-.login-password-field button {
-    flex: 0 0 auto;
-    white-space: nowrap;
+.login-password-toggle {
+    position: absolute;
+    inset-inline-end: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.login-password-toggle:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.login-password-toggle:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+}
+
+.login-password-icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    pointer-events: none;
+}
+
+.login-password-icon--hide,
+.login-password-toggle[aria-pressed="true"] .login-password-icon--show {
+    display: none;
+}
+
+.login-password-toggle[aria-pressed="true"] .login-password-icon--hide {
+    display: block;
 }
 
 .password-field-error {
@@ -6587,6 +6627,7 @@ html[data-theme="dark"] .chat-input-container .send-btn:disabled::before {
 
 .login-form input[type="text"],
 .login-form input[type="password"] {
+    min-height: 48px;
     width: 100%;
     padding: 12px 14px;
     font-size: 0.9375rem;

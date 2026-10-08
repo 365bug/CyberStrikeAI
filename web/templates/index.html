@@ -2,7 +2,15 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="manifest" href="/static/site.webmanifest">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="CyberStrikeAI">
     <title>CyberStrikeAI</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico?v=20260728">
     <link rel="shortcut icon" type="image/x-icon" href="/static/favicon.ico?v=20260728">
@@ -31,11 +39,13 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260907-blocked-1">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261008-password-eye-1">
     <link rel="stylesheet" href="/static/css/tool-guard.css?v=20260907-7">
     <link rel="stylesheet" href="/static/css/chat-plan-progress.css?v=20260813-4">
     <link rel="stylesheet" href="/static/css/c2.css">
     <link rel="stylesheet" href="/static/vendor/xterm.css">
+    <!-- 移动端样式层：全部规则限定在 767.98px 以下，桌面端零影响 -->
+    <link rel="stylesheet" href="/static/css/mobile.css?v=20261007-glass-1">
     <script src="/static/js/router.js?v=20260907-1"></script>
 </head>
 <body>
@@ -59,7 +69,15 @@
                     <label for="login-password" data-i18n="login.passwordLabel">密码</label>
                     <div class="login-password-field">
                         <input type="password" id="login-password" placeholder="输入登录密码" required autocomplete="current-password" aria-describedby="login-error" data-i18n="login.passwordPlaceholder" data-i18n-attr="placeholder" />
-                        <button type="button" id="login-password-toggle" class="btn-secondary" aria-controls="login-password" aria-pressed="false" onclick="toggleLoginPasswordVisibility()" data-i18n="login.showPassword">显示密码</button>
+                        <button type="button" id="login-password-toggle" class="login-password-toggle" aria-label="显示密码" title="显示密码" aria-controls="login-password" aria-pressed="false" onclick="toggleLoginPasswordVisibility()" data-i18n="login.showPassword" data-i18n-attr="aria-label,title" data-i18n-skip-text="true">
+                            <svg class="login-password-icon login-password-icon--show" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            <svg class="login-password-icon login-password-icon--hide" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                <path d="m3 3 18 18M10.6 5.1A12 12 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3 4M6.2 6.2A18 18 0 0 0 2 12s3.5 7 10 7a12 12 0 0 0 5.8-1.8M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
                 <div id="login-error" class="login-error" role="alert" style="display: none;"></div>
@@ -1257,7 +1275,7 @@
                                 </div>
                                 <div class="chat-composer-footer">
                                     <div class="chat-composer-footer-leading">
-                                        <input type="file" id="chat-file-input" class="chat-file-input-hidden" multiple accept="*" data-i18n="chat.selectFile" data-i18n-attr="title" title="选择文件">
+                                        <input type="file" id="chat-file-input" class="chat-file-input-hidden" multiple accept="*/*" data-i18n="chat.selectFile" data-i18n-attr="title" title="选择文件">
                                         <button type="button" class="chat-upload-btn" onclick="document.getElementById('chat-file-input').click()" data-i18n="chat.uploadFile" data-i18n-attr="title,aria-label" data-i18n-skip-text="true" title="上传文件（可多选或拖拽到此处）" aria-label="上传文件（可多选或拖拽到此处）">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                                 <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -5812,10 +5830,32 @@
     <script src="/static/js/sanitize-markdown.js"></script>
     <!-- Cytoscape.js for attack chain visualization -->
     <script src="/static/vendor/cytoscape.min.js"></script>
-    <!-- ELK.js for high-quality DAG layout (reduces edge crossings) -->
-    <script src="/static/vendor/elk.bundled.js"></script>
-    <!-- SheetJS for XLSX export (info-collect) -->
-    <script src="/static/vendor/xlsx.full.min.js"></script>
+    <!-- ELK.js (1.5MB) + SheetJS (860KB)：移动端延迟加载，首屏不再阻塞解析。
+         桌面端走 document.write 分支，保持与静态 <script src> 完全一致的同步语义。
+         安全依据：chat.js:7450 与 fact-graph.js:491 均有 typeof ELK 守卫并降级为默认布局；
+         assets.js:127/234/1024 与 info-collect.js:1537 均有 XLSX 守卫。 -->
+    <script>
+    (function () {
+        var LAZY_VENDOR = ['/static/vendor/elk.bundled.js', '/static/vendor/xlsx.full.min.js'];
+        var mq = window.matchMedia && window.matchMedia('(max-width: 767.98px)').matches;
+        if (!mq) {
+            for (var i = 0; i < LAZY_VENDOR.length; i++) {
+                document.write('<script src="' + LAZY_VENDOR[i] + '"><\/script>');
+            }
+            return;
+        }
+        var load = function () {
+            LAZY_VENDOR.forEach(function (src) {
+                var s = document.createElement('script');
+                s.src = src;
+                s.async = false;
+                document.head.appendChild(s);
+            });
+        };
+        if (window.requestIdleCallback) { requestIdleCallback(load, { timeout: 2000 }); }
+        else { setTimeout(load, 1200); }
+    })();
+    </script>
     <script>
         // 确保ELK对象全局可用
         if (typeof ELK === 'undefined' && typeof elk !== 'undefined') {
@@ -6927,7 +6967,7 @@
     <script src="/static/js/i18n.js"></script>
     <script src="/static/js/theme.js"></script>
     <script src="/static/js/builtin-tools.js"></script>
-    <script src="/static/js/auth.js?v=20260907-blocked-1"></script>
+    <script src="/static/js/auth.js?v=20261008-password-eye-1"></script>
     <script src="/static/js/modal.js"></script>
     <script src="/static/js/notifications.js"></script>
     <script src="/static/js/info-collect.js?v=20260717-1"></script>
@@ -6963,5 +7003,7 @@
     <script src="/static/js/rbac.js"></script>
     <script src="/static/js/c2.js"></script>
     <script src="/static/js/rbac-guards.js?v=20260907-1"></script>
+    <!-- 移动端交互层：必须最后加载，它包装 window.switchPage 并注入移动端 DOM -->
+    <script src="/static/js/mobile-ui.js?v=20261006-9"></script>
 </body>
 </html>

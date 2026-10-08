@@ -374,7 +374,7 @@ build_go_project_quiet() {
     rm -f "$GO_DOWNLOAD_LOG"
 
     GO_BUILD_LOG=$(mktemp)
-    if ! GOPROXY="$GOPROXY" go build -o "$BINARY_NAME" cmd/server/main.go >"$GO_BUILD_LOG" 2>&1; then
+    if ! GOPROXY="$GOPROXY" go build -o "$BINARY_NAME" ./cmd/server >"$GO_BUILD_LOG" 2>&1; then
         error "Build failed"
         echo ""
         info "Build error details:"

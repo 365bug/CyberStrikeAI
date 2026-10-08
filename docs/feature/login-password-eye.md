@@ -17,3 +17,8 @@ REQ-003 / AC-003: 图标随状态切换，显示密码/隐藏密码标签和悬�
 
 保留原按钮 ID 和 toggleLoginPasswordVisibility 入口；SVG 为装饰图像并 aria-hidden。按钮以 aria-label/title 命名，以现有 aria-pressed 表示状态；data-i18n-skip-text 防止翻译覆盖图标，data-i18n-attr 同步标签。
 相对定位容器+绝对定位按钮；输入框预留右内边距，图标呈现由 aria-pressed 的 CSS 选择器控制。使用现有主题色、原生按钮交互，不引入依赖。
+
+## F3 Plan
+
+修改 index.html 的按钮内部结构，style.css 的局部布局和交互样式，auth.js 的标签同步，扩充已有 password-feedback.test.cjs 的状态/标签断言。
+验证：已有密码反馈测试、JS syntax、diff check，实际浏览器桌面/窄屏与语言、键盘切换检查。回退可 revert 本功能代码提交。发布记录在 CHANGELOG.md Unreleased；不合并或发布。

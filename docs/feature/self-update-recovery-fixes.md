@@ -25,3 +25,12 @@ Rollback records require an explicit restore_binary decision; reconcile it, the 
 MCP request decoding retains field presence separately from bool values. For existing entries, omission preserves the manager's activation state; explicit disabled or external_mcp_enable fields determine it. New entries default to enabled. Keep raw configuration persistence and environment-expanded connection snapshots separate as today.
 
 Compatibility: properly written current journals remain readable, legacy plain-text recovery remains guarded; hand-edited or unsupported JSON requires manual correction instead of guessed mutation. Rollback of this patch restores old behavior and is not recommended while invalid journals remain.
+
+## Implementation plan (F3)
+
+1. Add recovery evidence parser/validators in a separate internal/update module; add narrow calls in build/rollback readers and pre-mutation paths. Keep producer formats unchanged.
+2. Preserve explicit field presence in the MCP request without changing its JSON shape; normalize enable state against the existing manager configuration.
+3. Promote the two failing review reproductions into portable regression tests; add duplicate/null/type/contradiction matrices and valid retry controls. Assert no build/swap, unchanged binaries and preserved journals for refusals.
+4. Run update/handler targeted suites and race checks, full Go tests, build, JS and shell checks; update changelog and verification record. Open a corrective PR and integrate the verified patch as part of the authorized merge-and-fix task, respecting repository checks.
+
+Docs: this phase record plus concise behavior notes in deployment/developer documentation if needed. No screenshots or production external services are required; tests use local Git and harmless command/HTTP markers. No version bump, tag or release publication.

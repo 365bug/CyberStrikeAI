@@ -34,3 +34,11 @@ Compatibility: properly written current journals remain readable, legacy plain-t
 4. Run update/handler targeted suites and race checks, full Go tests, build, JS and shell checks; update changelog and verification record. Open a corrective PR and integrate the verified patch as part of the authorized merge-and-fix task, respecting repository checks.
 
 Docs: this phase record plus concise behavior notes in deployment/developer documentation if needed. No screenshots or production external services are required; tests use local Git and harmless command/HTTP markers. No version bump, tag or release publication.
+
+## Implementation (F4)
+
+Implemented strict recovery decoding in recovery_evidence.go, with exact field names, nested duplicate/type/null checks, commit/hash validation and State reconciliation. Build recovery verifies pre-move versus post-move binary evidence before content restore and rechecks files after compilation. Fresh rollback and legacy-marker recovery also read State strictly. Self-contained rollback journals validate absence/hash coherence even after State cleanup, and actual absence is checked before any cleanup.
+
+MCP edits distinguish omitted activation fields from explicit booleans. Omitted fields preserve the manager state; Start/Stop and persisted disabled are synchronized so restart retains the requested state. Existing environment snapshot expansion is preserved.
+
+Tests added for malformed build/rollback journals, all independent review counterexamples, valid partial binary rename and final cleanup retries, and MCP stop/edit/start plus config reload. Targeted reproductions pass; original full Go, build, five-package race, and 277 JS checks passed before final evidence guard refinements. Final exact-patch validation follows in F5. No production external service was contacted.

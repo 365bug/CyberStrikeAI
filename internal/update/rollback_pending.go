@@ -29,11 +29,16 @@ func readRollbackPending(root string) (*rollbackPendingState, error) {
 		return nil, err
 	}
 	var pending rollbackPendingState
-	if err := json.Unmarshal(data, &pending); err != nil {
+	if err := decodeRecoveryJSON(data, &pending); err != nil {
 		return nil, err
 	}
-	if pending.State.PreviousCommit == "" || pending.State.UpdatedCommit == "" {
-		return nil, fmt.Errorf("回滚恢复记录缺少提交")
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(data, &fields)
+	if _, ok := fields["restore_binary"]; !ok {
+		return nil, fmt.Errorf("回滚恢复记录缺少二进制恢复决策")
+	}
+	if err := validateRollbackEvidence(root, pending); err != nil {
+		return nil, err
 	}
 	return &pending, nil
 }
@@ -58,6 +63,11 @@ func finishRollback(ctx context.Context, opts Options, pending rollbackPendingSt
 		return nil, err
 	}
 	bin := filepath.Join(root, opts.binaryName())
+	if !pending.RestoreBinary && pending.LiveSHA256 == "" {
+		if _, err := os.Lstat(bin); !os.IsNotExist(err) {
+			return nil, &Error{Reason: "binary_changed", Message: "恢复记录要求二进制不存在，但现场不匹配；已保留记录"}
+		}
+	}
 	if pending.RestoreBinary {
 		current, currentErr := fileSHA256(bin)
 		if currentErr != nil || current != pending.PreviousSHA256 {

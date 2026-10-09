@@ -55,3 +55,9 @@ Final GET-to-edit inspection found that manager Start/Stop retained a stale disa
 - Independent fresh-context code review at ff50af02 found no remaining blockers. Six independent recovery counterexamples were promoted to permanent tests and passed. No acceptance relies solely on test status: refusals assert retained journals/binary data, and valid controls prove continued recovery.
 - English and Chinese developer guides describe refusal/reconciliation behavior and MCP activation field precedence. No public request shape or release version changed.
 - Limits: local validation is macOS arm64; Windows/Linux results come from CI. No production restart/deployment smoke or exhaustive disk fault testing was performed.
+
+## Review and integration record (F6)
+
+Corrective PR: https://github.com/AIPentest/CyberStrikeAI/pull/347 . Code snapshot ff50af028f87465954911533ac07b420c92767b8 passed independent review; subsequent changes are documentation/changelog only. PRR-002 and PRR-007 are closed by the recorded implementation and regression evidence. The Unreleased changelog records both user-visible fixes. Final integration requires exact-head cross-platform CI success and unchanged reviewed production code; no tag or deployment is part of this task.
+
+The earlier nonblocking version-display crash window and recovery-path symlink observation from PR #346 remain follow-up items, outside the two requested blocker fixes. No broader reliability guarantee is inferred from these tests.

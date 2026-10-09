@@ -86,7 +86,7 @@ An installation that started as an unpacked Release archive has no `.git`; it ca
 the same page (the default official repository works without any configuration): the preview fetches in a throwaway repository and first lists
 **the local files the target would replace** and **the operator content that will be kept**; on
 confirm the directory becomes a git work tree (`git init`, origin added, the target branch checked
-out), every replaced file is kept under `.update-backup/<timestamp>/overwritten/`, operator content
+out), every replaced file is kept under `.update-backup/<unique-backup>/overwritten/`, operator content
 is stashed and restored as usual, and the binary is rebuilt. From then on it is a normal
 installation with one-click update and rollback - but note there is no git history before the
 connection, so the connection itself has no earlier commit to roll back to; the first real update
@@ -119,11 +119,15 @@ else -> 400). Other failures (`merge_failed`, `build_failed`, `swap_failed`) car
 compiler's own output; a failed build leaves the previous binary in place while the source has already
 moved and the state file is written, so it stays rollback-able.
 
+Check, update, adoption, rollback and restart share an operating-system file lock in the install
+directory (`.update-lock`). Wait for the other operation when `update_busy` is reported. The system
+releases the lock when its process exits; do not delete the lock file to bypass it.
+
 ### How operator content survives
 
 `roles/ skills/ tools/ agents/ knowledge_base/ data/ log/ venv/ config.yaml .env` belong to the
 **operator** (`update.Protected` is the judge). Before the merge, only those of those paths the
-update actually writes to are copied into `.update-backup/<timestamp>/` and removed from the tree -
+update actually writes to are copied into `.update-backup/<unique-backup>/` and removed from the tree -
 your extra directories that upstream never touched are not disturbed - and they are put back
 afterwards, which is what "update the code, keep my work" means. The result names every file in
 `keptContent` instead of quietly dropping it: where both you and upstream changed the same file, the
@@ -140,6 +144,11 @@ left (`no_binary`), a recorded commit is not in this repository (`bad_state`), t
 not the one the record pairs with that commit (`binary_changed`), **HEAD has moved since that update**
 (`moved_since_update` - a rollback undoes the update, not the work done after it), or source is
 modified locally (`local_source_edits`).
+
+Rollback writes `.update-rollback-pending.json` before changing source or binaries. Run rollback
+again after an interruption to finish recovery; the console reports `rollbackPending` and pauses new
+updates. Keep the recovery record, backup directory and `.prev` file. If recorded binary hashes do not
+match the files on disk, recovery refuses to overwrite them.
 
 ### The two restart cases
 

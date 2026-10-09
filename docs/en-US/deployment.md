@@ -99,7 +99,7 @@ mirror are all just this one setting; empty means the official repository. An in
 from a Release archive (no `.git`) can be connected from the same page (no configuration needed - the
 default official repository applies): the preview lists the files the target would replace and the
 operator content that is kept, replaced files are backed up under
-`.update-backup/<timestamp>/overwritten/`, and confirming turns the directory into a normal
+`.update-backup/<unique-backup>/overwritten/`, and confirming turns the directory into a normal
 installation with one-click updates.
 
 `upgrade.sh` still works and is now a thin shell over that implementation, with two paths decided by
@@ -136,7 +136,7 @@ quick upgrades without compatibility risk; in production still back up first. Py
 The one-click update leaves its own rollback point: `./cyberstrike-ai -update-rollback`, or the button
 on the page, goes back to the commit before that update and puts `cyberstrike-ai.prev` back. It runs
 only while HEAD is still the commit that update wrote, so work done afterwards is not discarded.
-Content that was put aside also survives under `.update-backup/<timestamp>/`.
+Content that was put aside also survives under `.update-backup/<unique-backup>/`.
 
 Beyond that, roll back together:
 

@@ -99,15 +99,11 @@ func restorePrevBinary(bin string) error {
 	if !fileExists(prev) {
 		return fmt.Errorf("没有旧二进制：%s", prev)
 	}
-	if fileExists(bin) {
-		if err := os.Remove(bin); err != nil {
-			return err
-		}
-	}
 	if err := os.Chmod(prev, 0o755); err != nil {
 		return err
 	}
-	return os.Rename(prev, bin)
+	return replaceBinary(prev, bin)
+
 }
 
 func fileSHA256(path string) (string, error) {

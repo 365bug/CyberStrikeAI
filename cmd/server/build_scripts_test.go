@@ -128,6 +128,37 @@ func TestUpgradeScriptUpdateConfigVersionPreservesDocumentAndMode(t *testing.T) 
 	}
 }
 
+func TestUpgradeScriptVersionRefusesUnsupportedYAML(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("upgrade.sh requires a POSIX shell")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 unavailable")
+	}
+	script, err := os.ReadFile(filepath.Join("..", "..", "upgrade.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := extractShellFunction(t, string(script), "update_config_version")
+	for _, original := range []string{
+		"--- {server: {port: 8088}}\n",
+		"{server: {port: 8088}}\n",
+		"version: \"old\n  version\"\nserver:\n  port: 8088\n",
+	} {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+			t.Fatal(err)
+		}
+		command := function + "\nCONFIG_FILE=$1\nupdate_config_version v1.2.3\n"
+		if output, err := exec.Command("bash", "-c", command, "test", path).CombinedOutput(); err != nil {
+			t.Fatalf("writer failed: %v %s", err, output)
+		}
+		if got, err := os.ReadFile(path); err != nil || string(got) != original {
+			t.Fatalf("unsupported YAML was changed: %q %v", got, err)
+		}
+	}
+}
+
 // The tarball path syncs with `rsync --delete`, so every artifact a one-click update writes
 // at the install root has to be on its keep list. .gitignore is exactly that list of
 // machine-local artifacts, so the assertion is derived from it: a new marker cannot be

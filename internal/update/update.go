@@ -24,6 +24,7 @@ package update
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -79,7 +80,7 @@ func ValidRemoteURL(s string) bool {
 	if strings.Contains(s, "::") {
 		return false
 	}
-	if strings.HasPrefix(s, "/") {
+	if strings.HasPrefix(s, "/") || filepath.IsAbs(s) {
 		return true
 	}
 	return urlSchemePattern.MatchString(s)
@@ -89,12 +90,12 @@ func ValidRemoteURL(s string) bool {
 // changed through the console or by hand. An update never overwrites them.
 var protectedDirs = []string{
 	"roles/", "skills/", "tools/", "agents/", "bundles/", "knowledge_base/",
-	"data/", "log/", "logs/", "tmp/", "venv/", ".upgrade-backup/",
+	"data/", "log/", "logs/", "tmp/", "venv/", ".venv/", "chat_uploads/", ".upgrade-backup/",
 }
 
 // protectedFiles are single files with the same rule - most importantly the live
 // configuration, which is never in the repository in the first place.
-var protectedFiles = []string{"config.yaml", "config.yml", ".env"}
+var protectedFiles = []string{"config.yaml", "config.yml", "config.local.yaml", ".env"}
 
 // Protected reports whether a repository-relative path belongs to the operator rather
 // than to the product.
@@ -214,7 +215,8 @@ type Snapshot struct {
 	// failed compile, or a machine without a toolchain). Such a tree has nothing left to
 	// pull and still owes a build, which is why this is visible without a network round
 	// trip: the page has to offer the click the failure message told the operator to make.
-	BuildPending bool `json:"buildPending"`
+	BuildPending    bool `json:"buildPending"`
+	RollbackPending bool `json:"rollbackPending"`
 
 	// CheckError carries a fetch or parse failure to the page instead of turning the
 	// whole endpoint into a 500: "offline" and "your token expired" are answers, not
@@ -289,6 +291,10 @@ func Status(ctx context.Context, opts Options) (*Snapshot, error) {
 		return snap, nil
 	}
 	snap.Installed = true
+	if err := repositoryRoot(ctx, root); err != nil {
+		snap.CheckError = err.Error()
+		return snap, nil
+	}
 
 	for _, q := range []struct {
 		args []string
@@ -304,15 +310,27 @@ func Status(ctx context.Context, opts Options) (*Snapshot, error) {
 		}
 	}
 
-	snap.LocalChanges, snap.BlockingChanges = localChanges(ctx, root)
+	var changeErr error
+	snap.LocalChanges, snap.BlockingChanges, changeErr = localChanges(ctx, root)
+	if changeErr != nil {
+		snap.CheckError = "无法检查本地改动：" + changeErr.Error()
+		return snap, nil
+	}
 	snap.GoToolchain, snap.CanBuild = toolchain(ctx, root)
 	bin := filepath.Join(root, opts.binaryName())
 	snap.HasBinary = fileExists(bin)
 	snap.BuildPending = buildPending(root)
 	if st, ok := readState(root); ok {
 		binaryAlreadyMatchesTarget := st.BinaryCommit != "" && st.BinaryCommit == st.PreviousCommit
-		snap.HasRollback = st.UpdatedCommit != "" && (binaryAlreadyMatchesTarget || fileExists(bin+".prev"))
+		snap.HasRollback = st.UpdatedCommit != "" && !st.PreviousBinaryAbsent && (binaryAlreadyMatchesTarget || fileExists(bin+".prev"))
 		snap.RollbackTo = st.PreviousCommit
+	}
+	if pending, err := readRollbackPending(root); err != nil {
+		snap.CheckError = "回滚恢复记录无法读取：" + err.Error()
+	} else if pending != nil {
+		snap.HasRollback = true
+		snap.RollbackPending = true
+		snap.RollbackTo = pending.State.PreviousCommit
 	}
 	return snap, nil
 }
@@ -325,10 +343,10 @@ func (s *Snapshot) sourceLabel() string { return s.Repo }
 
 // localChanges lists modified and deleted tracked files, and splits them by who owns
 // the path.
-func localChanges(ctx context.Context, root string) (all, blocking []Change) {
+func localChanges(ctx context.Context, root string) (all, blocking []Change, err error) {
 	out, err := gitRaw(ctx, root, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=no")
 	if err != nil {
-		return all, blocking
+		return all, blocking, err
 	}
 	for _, entry := range nulList(out) {
 		if len(entry) < 4 {
@@ -346,7 +364,7 @@ func localChanges(ctx context.Context, root string) (all, blocking []Change) {
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].Path < all[j].Path })
 	sort.Slice(blocking, func(i, j int) bool { return blocking[i].Path < blocking[j].Path })
-	return all, blocking
+	return all, blocking, nil
 }
 
 func changeVerb(status string) string {
@@ -364,6 +382,15 @@ func changeVerb(status string) string {
 // the only network operations in this package, and a failure is a readable answer rather
 // than a fault: the page has to distinguish "up to date" from "could not look".
 func Check(ctx context.Context, opts Options) (*Snapshot, error) {
+	release, err := LockInstall(opts)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return check(ctx, opts)
+}
+
+func check(ctx context.Context, opts Options) (*Snapshot, error) {
 	snap, err := Status(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -400,13 +427,18 @@ func Check(ctx context.Context, opts Options) (*Snapshot, error) {
 	}
 	snap.RemoteSubject, _ = gitCmd(ctx, root, "log", "-1", "--format=%s", ref)
 
-	if counts, err := gitCmd(ctx, root, "rev-list", "--left-right", "--count", "HEAD..."+ref); err == nil {
-		var ahead, behind int
-		if _, scanErr := fmt.Sscanf(counts, "%d %d", &ahead, &behind); scanErr == nil {
-			snap.Ahead, snap.Behind = ahead, behind
-			snap.Diverged = ahead > 0 && behind > 0
-		}
+	counts, err := gitCmd(ctx, root, "rev-list", "--left-right", "--count", "HEAD..."+ref)
+	if err != nil {
+		snap.CheckError = err.Error()
+		return snap, nil
 	}
+	var ahead, behind int
+	if _, err := fmt.Sscanf(counts, "%d %d", &ahead, &behind); err != nil {
+		snap.CheckError = "无法解析更新提交差异：" + err.Error()
+		return snap, nil
+	}
+	snap.Ahead, snap.Behind = ahead, behind
+	snap.Diverged = ahead > 0 && behind > 0
 	snap.UpdateAvailable = snap.Behind > 0
 	snap.IncomingTotal = snap.Behind
 
@@ -458,4 +490,25 @@ func parseDefaultBranch(out string) string {
 		}
 	}
 	return ""
+}
+
+// Git accepts any descendant of a work tree, but file backups and binary swaps
+// are rooted at the installation. Refuse descendants before touching that tree.
+func repositoryRoot(ctx context.Context, root string) error {
+	top, err := gitCmd(ctx, root, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return err
+	}
+	actual, err := os.Stat(root)
+	if err != nil {
+		return err
+	}
+	expected, err := os.Stat(top)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(actual, expected) {
+		return &Error{Reason: "bad_root", Message: "更新只能操作 git 仓库根目录，请使用：" + top}
+	}
+	return nil
 }

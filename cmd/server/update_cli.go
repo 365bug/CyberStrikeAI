@@ -45,6 +45,9 @@ func updateCommandIfNeeded(configPath string, check, apply, rollback bool) (bool
 			return true, 1
 		}
 		printSnapshot(snap)
+		if !snap.Installed || snap.CheckError != "" {
+			return true, 1
+		}
 		return true, 0
 	case apply:
 		res, err := update.Apply(ctx, opts, func(s update.Step) {

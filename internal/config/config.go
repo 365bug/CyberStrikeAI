@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1821,6 +1822,11 @@ func WriteVersion(path, version string) (bool, error) {
 	if len(version) > 64 || !versionValuePattern.MatchString(version) {
 		return false, fmt.Errorf("版本号不合法：%q", version)
 	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false, err
+	}
+	path = resolved
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
@@ -1860,18 +1866,88 @@ func WriteVersion(path, version string) (bool, error) {
 	if got, err := parseTopVersion([]byte(out)); err != nil || got != version {
 		return false, fmt.Errorf("version 的写法无法就地替换（改后配置解析失败或读回为 %q），已放弃写入，原文件未改动", got)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(out), info.Mode().Perm()); err != nil {
+	// Reading back version alone is insufficient: inserting before an inline
+	// document marker can create a new first document and hide every setting.
+	var originalSettings, nextSettings map[string]interface{}
+	if err := yaml.Unmarshal(data, &originalSettings); err != nil {
 		return false, err
 	}
-	if err := os.Chmod(tmp, info.Mode().Perm()); err != nil {
-		_ = os.Remove(tmp)
+	if err := yaml.Unmarshal([]byte(out), &nextSettings); err != nil {
 		return false, err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	delete(originalSettings, "version")
+	delete(nextSettings, "version")
+	if len(originalSettings) != len(nextSettings) || (len(originalSettings) > 0 && !reflect.DeepEqual(originalSettings, nextSettings)) {
+		return false, fmt.Errorf("版本号写入会改变其它配置，已放弃写入，原文件未改动")
+	}
+	if err := writeVersionFile(path, []byte(out), info.Mode().Perm()); err != nil {
 		return false, err
 	}
 	return true, nil
+
+}
+
+// RemoveVersion undoes a version field added by an update to an unversioned
+// configuration. All other settings and the file's permissions stay intact.
+func RemoveVersion(path string) (bool, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false, err
+	}
+	path = resolved
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		if !topVersionKey(line) {
+			continue
+		}
+		out := strings.Join(append(lines[:i], lines[i+1:]...), "\n")
+		var before, after map[string]interface{}
+		if err := yaml.Unmarshal(data, &before); err != nil {
+			return false, err
+		}
+		if err := yaml.Unmarshal([]byte(out), &after); err != nil {
+			return false, err
+		}
+		delete(before, "version")
+		if _, present := after["version"]; present || len(before) != len(after) || (len(before) > 0 && !reflect.DeepEqual(before, after)) {
+			return false, fmt.Errorf("无法安全移除版本号，原配置未改动")
+		}
+		if err := writeVersionFile(path, []byte(out), info.Mode().Perm()); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func writeVersionFile(path string, data []byte, mode os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".version-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if err := f.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 func EnsureLocalConfig(path string) (EnsureLocalConfigResult, error) {

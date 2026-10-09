@@ -139,6 +139,7 @@
     "applyBtn": "一键更新",
     "jobRunningHint": "已有一次更新在进行中，下面是它的进度。",
     "noToolchainWarn": "本机没有 Go 工具链：源码会更新，二进制不会更换，要由外部构建产出后再重启。",
+    "rollbackPendingHint": "上一次回滚尚未完成，请先点「回滚」继续恢复，再执行更新。",
     "buildPendingHint": "上一次更新只搬了源码、没能换二进制（编译失败或当时没有 Go 工具链）：点「一键更新」会补上这次编译。",
     "blockedNotGitTree": "这个目录不是 git 工作树，无法自动更新。",
     "blockedJobRunning": "已有更新在进行中，请等它结束。",

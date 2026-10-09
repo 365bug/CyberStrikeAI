@@ -1916,9 +1916,14 @@ func (h *ConfigHandler) ApplyConfig(c *gin.Context) {
 // 走与其他设置相同的写入路径：备份旧文件、按 YAML 文档只改 update 段、原子落盘。
 func (h *ConfigHandler) SetUpdateSource(repo string) error {
 	h.mu.Lock()
+	defer h.mu.Unlock()
+	previous := h.config.Update
 	h.config.Update = config.UpdateConfig{Repo: strings.TrimSpace(repo)}
-	h.mu.Unlock()
-	return h.saveConfig()
+	if err := h.saveConfig(); err != nil {
+		h.config.Update = previous
+		return err
+	}
+	return nil
 }
 
 // UpdateSource 读当前配置的更新源地址（加读锁；更新处理器每次请求现读，保存后立即生效）。

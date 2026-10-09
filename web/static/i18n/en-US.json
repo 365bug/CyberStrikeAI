@@ -139,6 +139,7 @@
     "applyBtn": "Update now",
     "jobRunningHint": "An update is already running; its progress is below.",
     "noToolchainWarn": "No Go toolchain here: the source will be updated but the binary will not be replaced; build it externally, then restart.",
+    "rollbackPendingHint": "The previous rollback is incomplete. Click Roll back to finish recovery before updating.",
     "buildPendingHint": "The last update moved the source but never replaced the binary (the build failed, or there was no Go toolchain): press Update to finish that build.",
     "blockedNotGitTree": "This directory is not a git work tree, so it cannot be updated automatically.",
     "blockedJobRunning": "An update is already running; wait for it to finish.",

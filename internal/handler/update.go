@@ -198,6 +198,16 @@ func (h *UpdateHandler) SaveSource(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "本次启动没有接入配置保存，更新源改不了"})
 		return
 	}
+	release, err := update.LockInstall(h.options())
+	if err != nil {
+		c.JSON(statusForError(err), errorBody(err))
+		return
+	}
+	defer release()
+	if busy := h.activeJob(); busy != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "更新进行中，不能切换更新源", "job": busy})
+		return
+	}
 	if err := h.saveSource(body.Repo); err != nil {
 		h.record(c, "update.source", "failure", "保存更新源失败: "+err.Error(), map[string]interface{}{"error": err.Error()})
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败：" + err.Error()})
@@ -281,6 +291,17 @@ func (h *UpdateHandler) Apply(c *gin.Context) {
 // answering requests. It refuses when there is nothing to activate, because a bounce that
 // cannot change anything is a dropped service for no reason.
 func (h *UpdateHandler) Restart(c *gin.Context) {
+	release, err := update.LockInstall(h.options())
+	if err != nil {
+		c.JSON(statusForError(err), errorBody(err))
+		return
+	}
+	scheduled := false
+	defer func() {
+		if !scheduled {
+			release()
+		}
+	}()
 	if busy := h.activeJob(); busy != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "更新进行中，等它结束再重启", "job": busy})
 		return
@@ -293,9 +314,14 @@ func (h *UpdateHandler) Restart(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "磁盘上的二进制与当前进程一致，没有待生效的版本", "reason": "nothing_pending"})
 		return
 	}
+	if !update.StampBinary(h.root, h.options()).Exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "磁盘上的二进制不存在，无法重启", "reason": "no_binary"})
+		return
+	}
 	h.record(c, "update.restart", "started", "重启安装以运行磁盘上的新二进制", nil)
 	c.JSON(http.StatusAccepted, gin.H{"restarting": true})
-	time.AfterFunc(updateRestartDelay, h.restart)
+	scheduled = true
+	time.AfterFunc(updateRestartDelay, func() { defer release(); h.restart() })
 }
 
 // Job answers GET /api/system/update/job: the running job, or the most recent one, with
@@ -347,6 +373,7 @@ func (h *UpdateHandler) startJob(kind string, restart bool) (*updateJob, bool) {
 	}
 	h.active = job.ID
 	snapshot := job.view()
+	opts := h.options()
 	h.mu.Unlock()
 
 	// The update outlives its HTTP request on purpose: the caller gets a handle, and a
@@ -369,7 +396,7 @@ func (h *UpdateHandler) startJob(kind string, restart bool) (*updateJob, bool) {
 		if kind == "adopt" {
 			run = update.Adopt
 		}
-		res, err := run(ctx, h.options(), onStep)
+		res, err := run(ctx, opts, onStep)
 		finish := "succeeded"
 		if err != nil {
 			finish = "failed"
@@ -385,12 +412,20 @@ func (h *UpdateHandler) startJob(kind string, restart bool) (*updateJob, bool) {
 		job.State = finish
 		job.Finished = time.Now().Format(time.RFC3339)
 		if job.Restart && finish == "succeeded" && res != nil && res.BinaryBuilt && h.restart != nil {
-			h.active = ""
-			h.mu.Unlock()
-			// Give the polling page one more chance to read the final state before the
-			// process it is watching goes away.
-			time.AfterFunc(updateRestartDelay, h.restart)
-			return
+			release, lockErr := update.LockInstall(opts)
+			if lockErr == nil {
+				h.mu.Unlock()
+				// Keep both CLI and HTTP writers out until the old process exits.
+				time.AfterFunc(updateRestartDelay, func() {
+					defer release()
+					defer func() { h.mu.Lock(); h.active = ""; h.mu.Unlock() }()
+					h.restart()
+				})
+				return
+			}
+			// Another process began an operation after the build. The binary is
+			// ready, but shutting down now would interrupt that operation.
+			job.Restart = false
 		}
 		h.active = ""
 		h.mu.Unlock()
@@ -480,7 +515,7 @@ func statusForError(err error) int {
 		return http.StatusInternalServerError
 	}
 	switch ue.Reason {
-	case "local_source_edits", "diverged", "no_state", "moved_since_update", "no_binary", "already_a_repo":
+	case "local_source_edits", "diverged", "no_state", "moved_since_update", "no_binary", "already_a_repo", "update_busy", "content_path_conflict", "existing_git_metadata":
 		return http.StatusConflict
 	default:
 		return http.StatusBadRequest

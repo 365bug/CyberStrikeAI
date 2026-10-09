@@ -1494,3 +1494,14 @@ test('a job poll that dies while the restart is in flight is not a failure', asy
     await h.flush();
     assert.equal(h.location.replaced.length, 1);
 });
+
+test('an interrupted rollback offers recovery and blocks a new update', async () => {
+    const h = await harness({ status: statusOf({ rollbackPending: true, hasRollback: true }) });
+    assert.match(h.html(), /上一次回滚尚未完成/);
+    assert.match(h.html(), /update-rollback-btn" data-require-permission="update:apply"/);
+    assert.match(h.html(), /update-apply-btn" disabled data-state-disabled="true"/);
+    h.calls.length = 0;
+    h.fire('startUpdateApply');
+    await h.flush();
+    assert.equal(h.calls.some(c => c.url === '/api/system/update/apply'), false);
+});

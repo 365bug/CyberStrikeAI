@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/update"
 
 	"github.com/gin-gonic/gin"
@@ -387,5 +388,49 @@ func TestUpdateRestartRefusesWithoutAHookOrDuringAJob(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "busy") {
 		t.Errorf("the conflict must hand back the job that owns the tree: %s", w.Body)
+	}
+}
+
+func TestUpdateSourceSaveAndRestartRespectInstallLock(t *testing.T) {
+	root := t.TempDir()
+	saved := false
+	router, _ := newUpdateRouterWithSource(root, func() {}, nil, func(string) error { saved = true; return nil })
+	release, err := update.LockInstall(update.Options{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	for _, endpoint := range []string{"source", "restart"} {
+		w := doUpdate(router, http.MethodPost, "/api/system/update/"+endpoint, `{"repo":""}`)
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "update_busy") {
+			t.Fatalf("%s did not respect CLI lock: %d %s", endpoint, w.Code, w.Body)
+		}
+	}
+	if saved {
+		t.Fatal("source changed while another operation owned the installation")
+	}
+}
+
+func TestUpdateRestartRefusesMissingExecutable(t *testing.T) {
+	root := t.TempDir()
+	writeFakeBinary(t, root, "old")
+	router, _ := newUpdateRouter(root, func() { t.Error("missing binary must not cause shutdown") })
+	if err := os.Remove(filepath.Join(root, update.Binary)); err != nil {
+		t.Fatal(err)
+	}
+	w := doUpdate(router, http.MethodPost, "/api/system/update/restart", "")
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "no_binary") {
+		t.Fatalf("restart accepted a missing executable: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestFailedUpdateSourceWriteKeepsActiveSource(t *testing.T) {
+	const original = "https://github.com/AIPentest/CyberStrikeAI.git"
+	h := &ConfigHandler{configPath: filepath.Join(t.TempDir(), "missing.yaml"), config: &config.Config{Update: config.UpdateConfig{Repo: original}}}
+	if err := h.SetUpdateSource("https://example.com/another.git"); err == nil {
+		t.Fatal("missing config must refuse the write")
+	}
+	if got := h.UpdateSource(); got != original {
+		t.Fatalf("failed save changed live update source to %q", got)
 	}
 }

@@ -533,7 +533,10 @@ for i, line in enumerate(lines):
         if m:
             value = m.group(2).strip()
             nxt = lines[i + 1] if i + 1 < len(lines) else ""
-            if value[:1] in ("|", ">") or (value == "" and nxt[:1] in (" ", "\t")):
+            # Without a YAML parser, only replace a complete scalar on one
+            # line. An open quote or flow/anchor value may continue below.
+            simple_value = re.fullmatch(r"(?:[A-Za-z0-9._+-]+|'[^'\n]*'|\"[^\"\\\n]*\")?(?:[ \t]+#.*)?", value)
+            if simple_value is None or (value == "" and nxt[:1] in (" ", "\t")):
                 sys.stderr.write("版本号未写入：config.yaml 的 version 是多行/块标量写法，无法就地替换（原文件未改动）\n")
                 refused = True
                 break
@@ -555,6 +558,10 @@ if not refused:
                 break
             trimmed = first.strip()
             if trimmed and not trimmed.startswith("#") and not first.startswith("%"):
+                # Only a block mapping at column zero can accept a new key.
+                if not re.match(r"^[A-Za-z_][A-Za-z0-9_-]*[ \t]*:", first):
+                    sys.stderr.write("版本号未写入：无法安全地在此 YAML 文档插入字段，原文件未改动\n")
+                    sys.exit(0)
                 break
         out.insert(insert_at, 'version: "%s"\n' % tag)
 
@@ -589,9 +596,9 @@ sync_code() {
 
   local -a rsync_excludes
   rsync_excludes+=( "--exclude=.upgrade-backup/" )
-  rsync_excludes+=( "--exclude=config.yaml" )
+  rsync_excludes+=( "--exclude=config.yaml" "--exclude=config.yml" "--exclude=config.local.yaml" "--exclude=.env" )
   rsync_excludes+=( "--exclude=data/" )
-  rsync_excludes+=( "--exclude=tmp/" )
+  rsync_excludes+=( "--exclude=tmp/" "--exclude=chat_uploads/" "--exclude=log/" "--exclude=logs/" "--exclude=bundles/" "--exclude=.venv/" )
 
   if [[ "$PRESERVE_VENV" -eq 1 ]]; then
     rsync_excludes+=( "--exclude=venv/" )
@@ -615,7 +622,7 @@ sync_code() {
   # forget a compile it still owes, so the next click reports "already up to date".
   rsync_excludes+=( "--exclude=.update-backup/" )
   rsync_excludes+=( "--exclude=.update-staging/" )
-  rsync_excludes+=( "--exclude=.update-state.json" )
+  rsync_excludes+=( "--exclude=.update-state.json" "--exclude=.update-lock" "--exclude=.update-rollback-pending.json" "--exclude=.update-rollback-pending.json.tmp" )
   rsync_excludes+=( "--exclude=.update-state.json.tmp" )
   rsync_excludes+=( "--exclude=.update-build-pending" )
   rsync_excludes+=( "--exclude=.update-build-pending.tmp" )

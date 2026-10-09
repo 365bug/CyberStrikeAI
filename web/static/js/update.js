@@ -414,6 +414,7 @@ function updateBehindCount(status) {
 // 按钮为什么点不动，得说得出原因；"灰着"不算解释。
 function updateApplyBlockers(status, job) {
     const blockers = [];
+    if (status.rollbackPending) blockers.push(updateT('rollbackPendingHint'));
     if (!status.installed) blockers.push(updateT('blockedNotGitTree'));
     if (job && job.state === 'running') blockers.push(updateT('blockedJobRunning'));
     if ((status.blockingChanges || []).length) {
@@ -781,6 +782,9 @@ function renderUpdateApplyBody(status, job) {
     }
     // 源码已经在更新源尖端、只欠一次编译：这不是"没有可用更新"，按钮必须照常可点，而且
     // 得说清楚点它会去补编译——否则 no_toolchain 里那句"再点一次更新"在页面上根本没有落点。
+    if (status.rollbackPending) {
+        parts.push('<div class="update-warn">' + escapeHtml(updateT('rollbackPendingHint')) + '</div>');
+    }
     if (status.buildPending && status.installed) {
         parts.push('<div class="update-warn">' + escapeHtml(updateT('buildPendingHint')) + '</div>');
     }

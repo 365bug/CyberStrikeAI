@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -388,6 +389,10 @@ func TestFileVersionAndWriteVersion(t *testing.T) {
 	if err := os.Chmod(path, 0o640); err != nil {
 		t.Fatal(err)
 	}
+	originalInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if v, err := FileVersion(path); err != nil || v != "v1.0.0" {
 		t.Fatalf("version = %q err = %v", v, err)
 	}
@@ -401,7 +406,7 @@ func TestFileVersionAndWriteVersion(t *testing.T) {
 	if got != want {
 		t.Fatalf("file after write:\n%q\nwant:\n%q", got, want)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o640 {
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != originalInfo.Mode().Perm() {
 		t.Fatalf("mode = %v err = %v, want 0640 preserved", info.Mode(), err)
 	}
 
@@ -437,6 +442,11 @@ func TestWriteVersionPreservesYAMLDocumentStart(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	originalInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	changed, err := WriteVersion(path, "v1.2.3")
 	if err != nil || !changed {
 		t.Fatalf("WriteVersion: changed=%v err=%v", changed, err)
@@ -463,7 +473,7 @@ func TestWriteVersionPreservesYAMLDocumentStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != originalMode {
+	if info.Mode().Perm() != originalInfo.Mode().Perm() {
 		t.Fatalf("mode = %v, want %v preserved", info.Mode().Perm(), originalMode)
 	}
 }
@@ -552,5 +562,50 @@ func TestWriteVersionAfterCommentedDocumentStart(t *testing.T) {
 				t.Fatalf("unexpected rewrite: %q", got)
 			}
 		})
+	}
+}
+
+func TestWriteVersionRefusesToHideAnInlineYAMLDocument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	original := "--- {server: {port: 8088}}\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := WriteVersion(path, "v1.2.3"); err == nil || changed {
+		t.Fatalf("must refuse document loss: changed=%v err=%v", changed, err)
+	}
+	if got := readTestFile(t, path); got != original {
+		t.Fatal("refusal modified config")
+	}
+}
+
+func TestVersionWritePreservesConfigSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating symlinks requires privileges on Windows")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "actual.yaml")
+	link := filepath.Join(dir, "config.yaml")
+	original := "server:\n  port: 8088\n"
+	if err := os.WriteFile(target, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteVersion(link, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("version write replaced config symlink")
+	}
+	if version, err := FileVersion(target); err != nil || version != "v1.2.3" {
+		t.Fatal("version did not reach symlink target")
+	}
+	if _, err := RemoveVersion(link); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestFile(t, target); got != original {
+		t.Fatal("version removal changed original settings")
 	}
 }

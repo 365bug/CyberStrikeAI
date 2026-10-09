@@ -108,17 +108,22 @@ func versionStep(step func(string, string), before, after string, err error) {
 // restoreVersionAfterRollback puts the old number back with the old code - but only while
 // the live config still carries exactly what the update wrote: a version someone edited by
 // hand after the update belongs to them, not to the rollback.
-func restoreVersionAfterRollback(root string, st State) {
+func restoreVersionAfterRollback(root string, st State) error {
 	if st.VersionAfter == "" {
-		return
+		return nil
 	}
 	path := liveConfigFile(root)
 	if path == "" {
-		return
+		return nil
 	}
 	current, err := config.FileVersion(path)
 	if err != nil || current != st.VersionAfter {
-		return
+		return nil
 	}
-	_, _ = config.WriteVersion(path, st.VersionBefore)
+	if st.VersionBefore == "" {
+		_, err := config.RemoveVersion(path)
+		return err
+	}
+	_, err = config.WriteVersion(path, st.VersionBefore)
+	return err
 }

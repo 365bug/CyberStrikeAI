@@ -496,7 +496,7 @@ func TestRetryRestoresProtectedContentWhenInterruptedBeforeMerge(t *testing.T) {
 	if err != nil || snap.CheckError != "" {
 		t.Fatalf("check: %v, %s", err, snap.CheckError)
 	}
-	backupDir, kept, err := stashProtected(context.Background(), tr.install, snap.sourceRef())
+	backupDir, kept, _, err := stashProtected(context.Background(), tr.install, snap.sourceRef())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +553,7 @@ func TestRetryAfterMergeRestoresOnlyUntouchedProtectedContent(t *testing.T) {
 			if err != nil || snap.CheckError != "" {
 				t.Fatalf("check: %v, %s", err, snap.CheckError)
 			}
-			backupDir, kept, err := stashProtected(context.Background(), tr.install, snap.sourceRef())
+			backupDir, kept, _, err := stashProtected(context.Background(), tr.install, snap.sourceRef())
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -161,4 +162,24 @@ func asReason(err error) string {
 		return ue.Reason
 	}
 	return ""
+}
+
+func TestAdoptPreservesModeOfUnchangedProtectedFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions are not available on Windows")
+	}
+	requireGit(t)
+	tr, dir := newAdoptFixture(t)
+	role := filepath.Join(dir, "roles", "shipped.yaml")
+	writeFile(t, role, readFile(t, filepath.Join(tr.upstream, "roles", "shipped.yaml")))
+	if err := os.Chmod(role, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Adopt(context.Background(), Options{Root: dir, Repo: tr.upstream, BinaryName: "none"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(role)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("adoption lost private permissions: %v %v", info, err)
+	}
 }

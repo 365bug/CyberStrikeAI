@@ -28,6 +28,7 @@ type State struct {
 	BinaryCommit         string `json:"binary_commit,omitempty"`
 	BinarySHA256         string `json:"binary_sha256,omitempty"`
 	PreviousBinarySHA256 string `json:"previous_binary_sha256,omitempty"`
+	PreviousBinaryAbsent bool   `json:"previous_binary_absent,omitempty"`
 	// VersionBefore/VersionAfter record a version-line change this update made, so a
 	// rollback can put the old number back next to the old code. Absent for updates that
 	// touched no version (old state files simply have no such fields).
@@ -50,10 +51,14 @@ type buildPendingState struct {
 	PreviousCommit       string   `json:"previous_commit,omitempty"`
 	BackupDir            string   `json:"backup_dir,omitempty"`
 	KeptContent          []string `json:"kept_content,omitempty"`
+	DeletedContent       []string `json:"deleted_content,omitempty"`
 	VersionBefore        string   `json:"version_before,omitempty"`
 	VersionAfter         string   `json:"version_after,omitempty"`
 	BinarySHA256         string   `json:"binary_sha256,omitempty"`
 	PreviousBinarySHA256 string   `json:"previous_binary_sha256,omitempty"`
+	AdoptBranch          string   `json:"adopt_branch,omitempty"`
+	OverwrittenContent   []string `json:"overwritten_content,omitempty"`
+	PreviousBinaryAbsent bool     `json:"previous_binary_absent,omitempty"`
 	Legacy               bool     `json:"-"`
 }
 
@@ -173,12 +178,27 @@ func (e *Error) Error() string { return e.Message }
 // failed build leaves the tree updated (source and previous binary are both recoverable),
 // while a refused precondition leaves nothing touched at all.
 func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error) {
+	release, err := LockInstall(opts)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	if onStep == nil {
 		onStep = func(Step) {}
 	}
 	step := func(phase, msg string) { onStep(Step{Phase: phase, Message: msg, At: time.Now().Format(time.RFC3339)}) }
 
-	snap, err := Check(ctx, opts)
+	root, rootErr := opts.installRoot()
+	if rootErr != nil {
+		return nil, rootErr
+	}
+	if pending, err := readRollbackPending(root); err != nil || pending != nil {
+		return nil, &Error{Reason: "rollback_pending", Message: "上一次回滚尚未完成，请先重试回滚，再执行更新"}
+	}
+	if err := recoverAdoption(ctx, opts); err != nil {
+		return nil, err
+	}
+	snap, err := check(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -241,9 +261,9 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	// write to, so the fast-forward cannot be refused by "your local changes would be
 	// overwritten". Nothing here deletes a file the operator made: every path is copied
 	// out first and copied back after.
-	root := snap.Root
+	root = snap.Root
 	ref := snap.sourceRef()
-	backupDir, kept, err := stashProtected(ctx, root, ref)
+	backupDir, kept, deleted, err := stashProtected(ctx, root, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +285,9 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		PreviousCommit: previousCommit,
 		BackupDir:      backupDir,
 		KeptContent:    kept,
+		DeletedContent: deleted,
 	}
+	pending.PreviousBinaryAbsent = !fileExists(bin)
 	if opts.binaryName() != "none" && fileExists(bin) {
 		pending.PreviousBinarySHA256, err = fileSHA256(bin)
 		if err != nil {
@@ -296,6 +318,10 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 	// The merge wrote upstream's version of the content paths; the operator's copies win
 	// them back, which is what "update the code, keep my work" means.
 	if err := restoreProtected(backupDir, kept); err != nil {
+		return nil, err
+	}
+
+	if err := restoreDeleted(root, deleted); err != nil {
 		return nil, err
 	}
 
@@ -332,6 +358,7 @@ func Apply(ctx context.Context, opts Options, onStep func(Step)) (*Result, error
 		state.BinaryCommit = previousCommit
 		state.BinarySHA256 = pending.PreviousBinarySHA256
 		state.PreviousBinarySHA256 = pending.PreviousBinarySHA256
+		state.PreviousBinaryAbsent = pending.PreviousBinaryAbsent
 	}
 	if err := writeState(root, state); err != nil {
 		return res, &Error{Reason: "state_unwritable", Message: "无法写入更新状态文件，回滚将不可用：" + err.Error()}
@@ -391,6 +418,7 @@ func finishPendingBuild(ctx context.Context, snap *Snapshot, opts Options, res *
 		pending.VersionBefore = state.VersionBefore
 		pending.VersionAfter = state.VersionAfter
 		pending.PreviousBinarySHA256 = state.PreviousBinarySHA256
+		pending.PreviousBinaryAbsent = state.PreviousBinaryAbsent
 		if state.BinaryCommit != "" {
 			binaryCommit, resolveErr := gitCmd(ctx, snap.Root, "rev-parse", state.BinaryCommit)
 			previous, previousErr := gitCmd(ctx, snap.Root, "rev-parse", state.PreviousCommit)
@@ -481,6 +509,7 @@ func finishPendingBuild(ctx context.Context, snap *Snapshot, opts Options, res *
 					BinaryCommit:         target,
 					BinarySHA256:         currentHash,
 					PreviousBinarySHA256: pending.PreviousBinarySHA256,
+					PreviousBinaryAbsent: pending.PreviousBinaryAbsent,
 					VersionBefore:        pending.VersionBefore,
 					VersionAfter:         pending.VersionAfter,
 				}
@@ -515,6 +544,7 @@ func finishPendingBuild(ctx context.Context, snap *Snapshot, opts Options, res *
 			BinaryCommit:         pending.PreviousCommit,
 			BinarySHA256:         pending.PreviousBinarySHA256,
 			PreviousBinarySHA256: pending.PreviousBinarySHA256,
+			PreviousBinaryAbsent: pending.PreviousBinaryAbsent,
 			VersionBefore:        pending.VersionBefore,
 			VersionAfter:         pending.VersionAfter,
 		}
@@ -534,6 +564,9 @@ func finishPendingBuild(ctx context.Context, snap *Snapshot, opts Options, res *
 // a retry can prove whether the swap happened instead of doing it twice.
 func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, step func(string, string), commit string, state *State, pending buildPendingState) error {
 	step("build", "开始编译二进制（首次会下载依赖，可能需要几分钟）")
+	if err := verifyBuildSource(ctx, root, commit); err != nil {
+		return err
+	}
 	staging := filepath.Join(root, ".update-staging")
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		return &Error{Reason: "staging_failed", Message: err.Error()}
@@ -543,6 +576,9 @@ func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, s
 	newBin := filepath.Join(staging, opts.binaryName())
 	if err := build(ctx, root, newBin); err != nil {
 		return &Error{Reason: "build_failed", Message: "编译失败，二进制保持原版本：\n" + err.Error()}
+	}
+	if err := verifyBuildSource(ctx, root, commit); err != nil {
+		return err
 	}
 	newHash, err := fileSHA256(newBin)
 	if err != nil {
@@ -576,7 +612,7 @@ func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, s
 	// A legacy marker without hashes is ambiguous when a rebuild differs from the
 	// installed binary. Only a clean VCS stamp for the previous commit can prove
 	// that another swap will preserve the right rollback binary.
-	if (pending.Legacy || pending.PreviousCommit != "") && pending.PreviousBinarySHA256 == "" {
+	if (pending.Legacy || pending.PreviousCommit != "") && pending.PreviousBinarySHA256 == "" && !pending.PreviousBinaryAbsent {
 		revision := binaryRevision(bin)
 		previous, resolveErr := gitCmd(ctx, root, "rev-parse", pending.PreviousCommit)
 		if revision == "" || resolveErr != nil || revision != previous {
@@ -610,6 +646,7 @@ func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, s
 		state.BinaryCommit = commit
 		state.BinarySHA256 = newHash
 		state.PreviousBinarySHA256 = pending.PreviousBinarySHA256
+		state.PreviousBinaryAbsent = pending.PreviousBinaryAbsent
 		if err := writeState(root, *state); err != nil {
 			return &Error{Reason: "state_unwritable", Message: "二进制已换入，但无法更新回滚状态：" + err.Error()}
 		}
@@ -623,18 +660,25 @@ func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, s
 // stashProtected copies every operator-owned file that stands in the way of the
 // fast-forward into backupDir. The caller persists the recovery record before removing
 // these paths, so a crash can never strand content without saying where its copy lives.
-func stashProtected(ctx context.Context, root, ref string) (backupDir string, kept []string, err error) {
+func stashProtected(ctx context.Context, root, ref string) (backupDir string, kept, deleted []string, err error) {
 	ts := time.Now().Format("20060102_150405")
-	backupDir = filepath.Join(root, ".update-backup", ts)
+	backupDir = ""
 
-	tracked, _ := localChanges(ctx, root)
+	tracked, _, changeErr := localChanges(ctx, root)
+	if changeErr != nil {
+		return "", nil, nil, changeErr
+	}
 	incoming, err := gitRaw(ctx, root, "diff", "--name-only", "-z", "HEAD.."+ref)
 	if err != nil {
-		return "", nil, &Error{Reason: "diff_failed", Message: err.Error()}
+		return "", nil, nil, &Error{Reason: "diff_failed", Message: err.Error()}
 	}
 	willWrite := map[string]bool{}
 	for _, f := range nulList(incoming) {
 		willWrite[filepath.ToSlash(f)] = true
+	}
+
+	if err := validateIncomingFiles(ctx, root, willWrite); err != nil {
+		return "", nil, nil, err
 	}
 
 	// A locally modified content file would refuse the merge; an untracked content file
@@ -642,30 +686,44 @@ func stashProtected(ctx context.Context, root, ref string) (backupDir string, ke
 	targets := map[string]bool{}
 	for _, c := range tracked {
 		if c.Protected && willWrite[c.Path] {
-			targets[c.Path] = true
+			if c.Status == "deleted" {
+				deleted = append(deleted, c.Path)
+			} else {
+				targets[c.Path] = true
+			}
 		}
 	}
 	for _, p := range untrackedUnder(ctx, root, willWrite) {
 		targets[p] = true
 	}
 
+	sort.Strings(deleted)
 	for p := range targets {
+		if err := validateFilePath(root, p); err != nil {
+			return backupDir, kept, deleted, err
+		}
 		abs := filepath.Join(root, p)
 		info, statErr := os.Stat(abs)
-		if statErr != nil || info.IsDir() {
-			continue
+		if statErr != nil || !info.Mode().IsRegular() {
+			return backupDir, kept, deleted, &Error{Reason: "backup_failed", Message: "备份前本地文件发生变化，未执行更新：" + p}
+		}
+		if backupDir == "" {
+			backupDir, err = newBackupDir(root, ts)
+			if err != nil {
+				return "", nil, deleted, err
+			}
 		}
 		if err := copyFile(abs, filepath.Join(backupDir, p), info.Mode()); err != nil {
-			return backupDir, kept, &Error{Reason: "backup_failed", Message: fmt.Sprintf("备份 %s 失败：%v", p, err)}
+			return backupDir, kept, deleted, &Error{Reason: "backup_failed", Message: fmt.Sprintf("备份 %s 失败：%v", p, err)}
 		}
 		kept = append(kept, p)
 	}
 	if len(kept) > 0 {
 		sort.Strings(kept)
-		return backupDir, kept, nil
+		return backupDir, kept, deleted, nil
 	}
 	// Nothing to put aside: don't leave an empty backup directory behind.
-	return "", nil, nil
+	return "", nil, deleted, nil
 }
 
 func removeProtected(root string, kept []string) error {
@@ -705,18 +763,27 @@ func stashProtectedEdits(ctx context.Context, root, target string, changed []Cha
 	for _, p := range nulList(incoming) {
 		willWrite[filepath.ToSlash(p)] = true
 	}
+	if err := validateIncomingFiles(ctx, root, willWrite); err != nil {
+		return "", nil, nil, err
+	}
 	for _, p := range untrackedUnder(ctx, root, willWrite) {
 		files[p] = true
 	}
 
 	for p := range files {
+		if err := validateFilePath(root, p); err != nil {
+			return backupDir, kept, deleted, err
+		}
 		abs := filepath.Join(root, filepath.FromSlash(p))
 		info, statErr := os.Stat(abs)
 		if statErr != nil || !info.Mode().IsRegular() {
-			continue
+			return backupDir, kept, deleted, &Error{Reason: "backup_failed", Message: "备份前本地文件发生变化，未执行回滚：" + p}
 		}
 		if backupDir == "" {
-			backupDir = filepath.Join(root, ".update-backup", "rollback_"+ts)
+			backupDir, err = newBackupDir(root, "rollback_"+ts)
+			if err != nil {
+				return "", nil, deleted, err
+			}
 		}
 		if err := copyFile(abs, filepath.Join(backupDir, filepath.FromSlash(p)), info.Mode()); err != nil {
 			return backupDir, kept, deleted, &Error{Reason: "backup_failed", Message: fmt.Sprintf("备份 %s 失败：%v", p, err)}
@@ -751,6 +818,19 @@ func restoreProtected(backupDir string, kept []string) error {
 }
 
 func restoreInterruptedProtected(ctx context.Context, root string, pending buildPendingState, merged bool) error {
+	if merged {
+		// Reapply only untouched copies written by the merge. A file recreated
+		// by the operator after the crash belongs to them.
+		for _, rel := range pending.DeletedContent {
+			workHash, workErr := gitCmd(ctx, root, "hash-object", "--", rel)
+			headHash, headErr := gitCmd(ctx, root, "rev-parse", "HEAD:"+rel)
+			if workErr == nil && headErr == nil && workHash == headHash {
+				if err := restoreDeleted(root, []string{rel}); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if pending.BackupDir == "" || len(pending.KeptContent) == 0 {
 		return nil
 	}
@@ -788,16 +868,15 @@ func restoreInterruptedProtected(ctx context.Context, root string, pending build
 // untrackedUnder lists untracked files under the given repository paths - the operator's
 // own additions, which must be backed up but never deleted by an update.
 func untrackedUnder(ctx context.Context, root string, willWrite map[string]bool) []string {
-	out, err := gitRaw(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+	// With no exclude patterns ls-files includes ignored files too. git merge
+	// may overwrite an ignored config or database without an untracked warning.
+	out, err := gitRaw(ctx, root, "ls-files", "--others", "-z")
 	if err != nil {
 		return nil
 	}
 	var list []string
 	for _, entry := range nulList(out) {
-		if len(entry) < 4 || entry[:2] != "??" {
-			continue
-		}
-		p := filepath.ToSlash(entry[3:])
+		p := filepath.ToSlash(entry)
 		if willWrite[p] && Protected(p) {
 			list = append(list, p)
 		}
@@ -809,13 +888,41 @@ func untrackedUnder(ctx context.Context, root string, willWrite map[string]bool)
 // before the swap. It refuses unless HEAD is still exactly what the update wrote, so it
 // can never discard work done after that update.
 func Rollback(ctx context.Context, opts Options) (*Result, error) {
+	release, err := LockInstall(opts)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	root, err := opts.installRoot()
 	if err != nil {
 		return nil, err
 	}
+
+	interrupted, err := readRollbackPending(root)
+	if err != nil {
+		return nil, &Error{Reason: "state_unreadable", Message: "无法读取回滚恢复记录：" + err.Error()}
+	}
+	if interrupted != nil {
+		if err := repositoryRoot(ctx, root); err != nil {
+			return nil, err
+		}
+		head, err := gitCmd(ctx, root, "rev-parse", "HEAD")
+		if err != nil {
+			return nil, err
+		}
+		if head == interrupted.State.PreviousCommit {
+			return finishRollback(ctx, opts, *interrupted)
+		}
+		if head != interrupted.State.UpdatedCommit {
+			return nil, &Error{Reason: "moved_since_update", Message: "回滚中断后 HEAD 已经变了，拒绝覆盖后续提交"}
+		}
+	}
 	st, ok := readState(root)
 	if !ok {
 		return nil, &Error{Reason: "no_state", Message: "没有可回滚的更新记录"}
+	}
+	if err := repositoryRoot(ctx, root); err != nil {
+		return nil, err
 	}
 	bin := filepath.Join(root, opts.binaryName())
 	restoreBinary := true
@@ -848,6 +955,9 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 		}
 	}
 	if restoreBinary {
+		if st.PreviousBinaryAbsent {
+			return nil, &Error{Reason: "no_binary", Message: "这次更新之前没有二进制，不能使用其它更新留下的 .prev 回滚"}
+		}
 		if !fileExists(bin + ".prev") {
 			return nil, &Error{Reason: "no_binary", Message: "上一次更新没有留下旧二进制，无法回滚二进制（源码仍可用 git 处理）"}
 		}
@@ -874,7 +984,10 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	start := time.Now()
-	changes, blocking := localChanges(ctx, root)
+	changes, blocking, changeErr := localChanges(ctx, root)
+	if changeErr != nil {
+		return nil, changeErr
+	}
 	if len(blocking) > 0 {
 		items := make([]string, 0, len(blocking))
 		for _, c := range blocking {
@@ -893,47 +1006,31 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 		return nil, err
 	}
 
-	if _, err := gitCmd(ctx, root, "reset", "--hard", "--quiet", st.PreviousCommit); err != nil {
-		return nil, &Error{Reason: "reset_failed", Message: err.Error()}
-	}
-	if err := restoreProtected(backupDir, kept); err != nil {
-		return nil, err
-	}
-	for _, p := range deleted {
-		// A protected file the operator deleted by hand stays deleted: the reset just
-		// brought the old commit's copy back, and that deletion is a local change like any
-		// other this rollback promised not to touch.
-		if err := os.Remove(filepath.Join(root, filepath.FromSlash(p))); err != nil && !os.IsNotExist(err) {
+	pending := rollbackPendingState{State: st, BackupDir: backupDir, Kept: kept, Deleted: deleted, RestoreBinary: restoreBinary}
+	if fileExists(bin) {
+		pending.LiveSHA256, err = fileSHA256(bin)
+		if err != nil {
 			return nil, err
 		}
 	}
 	if restoreBinary {
-		if err := restorePrevBinary(bin); err != nil {
-			return nil, &Error{Reason: "swap_failed", Message: err.Error()}
+		pending.PreviousSHA256, err = fileSHA256(bin + ".prev")
+		if err != nil {
+			return nil, err
 		}
 	}
-	// Source and binary agree again (both the previous commit's), so a pending-build
-	// marker from a failed attempt no longer describes anything - keeping it would invite
-	// a rebuild of the old tree.
-	if err := clearBuildPending(root); err != nil {
-		return nil, &Error{Reason: "state_unwritable", Message: "回滚完成，但无法清除待编译标记：" + err.Error()}
+	if err := writeRollbackPending(root, pending); err != nil {
+		return nil, &Error{Reason: "state_unwritable", Message: "无法写入回滚恢复记录，未修改源码或二进制：" + err.Error()}
 	}
-	// The version number goes back with the code it belongs to (only when it is still the
-	// one that update wrote - see restoreVersionAfterRollback).
-	restoreVersionAfterRollback(root, st)
-	if err := os.Remove(statePath(root)); err != nil && !os.IsNotExist(err) {
-		return nil, err
+	if _, err := gitCmd(ctx, root, "reset", "--hard", "--quiet", st.PreviousCommit); err != nil {
+		return nil, &Error{Reason: "reset_failed", Message: err.Error()}
 	}
-	return &Result{
-		FromCommit:   shortHash(head),
-		ToCommit:     shortHash(st.PreviousCommit),
-		KeptContent:  kept,
-		BinaryPath:   bin,
-		BinaryBuilt:  restoreBinary,
-		BackupDir:    st.BackupDir,
-		NeedsRestart: true,
-		Duration:     time.Since(start).Round(time.Millisecond).String(),
-	}, nil
+	res, err := finishRollback(ctx, opts, pending)
+	if res != nil {
+		res.Duration = time.Since(start).Round(time.Millisecond).String()
+	}
+	return res, err
+
 }
 
 func shortHash(h string) string {
@@ -946,4 +1043,57 @@ func shortHash(h string) string {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+func restoreDeleted(root string, deleted []string) error {
+	for _, rel := range deleted {
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(rel))); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func newBackupDir(root, prefix string) (string, error) {
+	base := filepath.Join(root, ".update-backup")
+	if err := os.MkdirAll(base, 0700); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(base, prefix+"-")
+}
+
+func verifyBuildSource(ctx context.Context, root, commit string) error {
+	head, err := gitCmd(ctx, root, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	if head != commit {
+		return &Error{Reason: "build_state_mismatch", Message: "编译期间源码提交发生变化，拒绝换入无法配对的二进制"}
+	}
+	_, blocking, err := localChanges(ctx, root)
+	if err != nil {
+		return err
+	}
+	if len(blocking) > 0 {
+		return &Error{Reason: "local_source_edits", Message: "编译期间源码发生本地改动，已保留二进制和备份，请先处理这些改动"}
+	}
+	return nil
+}
+
+func validateIncomingFiles(ctx context.Context, root string, paths map[string]bool) error {
+	for rel := range paths {
+		if err := validateFilePath(root, rel); err != nil {
+			return err
+		}
+	}
+	others, err := gitRaw(ctx, root, "ls-files", "--others", "-z")
+	if err != nil {
+		return err
+	}
+	for _, rel := range nulList(others) {
+		if paths[rel] && !Protected(rel) {
+			return &Error{Reason: "local_source_edits", Message: "目标提交会覆盖本地未跟踪的源码文件，已拒绝更新：" + rel, Items: []string{rel}}
+		}
+	}
+	return nil
 }

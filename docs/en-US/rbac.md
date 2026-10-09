@@ -74,6 +74,7 @@ Permissions use `module:action`. Common actions are `read`, `write`, `delete`, a
 | WebShell | `webshell:read`, `webshell:write`, `webshell:delete` |
 | C2 | `c2:read`, `c2:write`, `c2:delete` |
 | MCP | `mcp:read`, `mcp:execute`, `mcp:write`, `mcp:external:execute` |
+| One-click update (local source) | `update:read`, `update:apply` |
 | Knowledge | `knowledge:read`, `knowledge:write`, `knowledge:delete` |
 | Skills | `skills:read`, `skills:write`, `skills:delete` |
 | Markdown Agents | `agents:read`, `agents:write`, `agents:delete` |
@@ -99,6 +100,11 @@ Important distinctions:
 - `mcp:external:execute` allows Agent calls to external MCP tools and currently also requires `all` scope.
 - `fofa:execute` is kept for backward compatibility, but it now protects the Reconnaissance page for FOFA, ZoomEye, Quake, and Shodan searches.
 - `mcp:write` manages external MCP configuration; it is separate from external tool execution.
+- One-click update is two permissions: `update:read` shows the installed version and the gap against
+  the update source, while `update:apply` pulls the configured source repository's default branch
+  (the official repository by default), rebuilds the platform binary and swaps it. The mutating side additionally requires the session to hold that permission
+  with `all` scope - one machine has one source tree, so an `assigned`/`own` session must not be able
+  to move the code everybody else is running.
 - `robot:write` manages robot configuration and the test endpoint. Chatbot conversations use the bound user or configured service account's business permissions.
 
 ---
@@ -143,6 +149,7 @@ Some definitions have no owner. Their mutations require the corresponding permis
 - Knowledge mutations other than search.
 - Global HITL allowlist, reviewer, and audit policy.
 - C2 Profile mutations.
+- One-click update mutations (`check`/`apply`/`rollback`, i.e. `update:apply`).
 - Some global monitor statistics.
 
 ---

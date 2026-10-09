@@ -3629,6 +3629,9 @@
                                 <div class="settings-nav-item" data-section="storage" onclick="switchSettingsSection('storage')">
                                     <span data-i18n="settings.nav.storage">存储清理</span>
                                 </div>
+                                <div class="settings-nav-item" data-section="update" data-require-permission="update:read" onclick="switchSettingsSection('update')">
+                                    <span data-i18n="settings.nav.update">一键更新</span>
+                                </div>
                             </nav>
                         </aside>
                         
@@ -5196,6 +5199,16 @@
                                         <button type="button" class="btn-primary" data-require-permission="storage:write" onclick="saveStorageSettings()" data-i18n="settingsStorage.save">保存策略</button>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- 一键更新 -->
+                            <div id="settings-section-update" class="settings-section-content" data-require-permission="update:read">
+                                <div class="settings-section-header update-section-head">
+                                    <h3 data-i18n="update.title">一键更新</h3>
+                                    <button class="btn-secondary" type="button" onclick="loadUpdateConsole()" data-i18n="common.refresh">刷新</button>
+                                </div>
+                                <p class="update-intro" data-i18n="update.intro">这一页改的就是当前正在应答请求的这套安装：拉取它自己跟踪的远端、重新编译、换掉二进制。你本机维护的 roles/skills/tools 与配置不会被覆盖。</p>
+                                <div id="update-console" class="update-console"></div>
                             </div>
 
                         </div>
@@ -6985,6 +6998,7 @@
     <script src="/static/js/tasks.js"></script>
     <script src="/static/js/workflow-package-client.js"></script>
     <script src="/static/js/workflows.js"></script>
+    <script src="/static/js/update.js?v={{.Version}}"></script>
     <script src="/static/js/roles.js"></script>
     <script src="/static/js/rbac.js"></script>
     <script src="/static/js/c2.js"></script>

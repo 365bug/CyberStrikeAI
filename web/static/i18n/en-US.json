@@ -2905,6 +2905,7 @@
     "detailImpact": "Impact",
     "detailRecommendation": "Remediation",
     "detailRetestNotes": "Retest method",
+    "detailRetestLog": "Retest log",
     "downloadOkTitle": "Downloaded",
     "exportFailedMessage": "Export failed",
     "downloadFailed": "Download failed"
@@ -3870,7 +3871,8 @@
     "headingEvidence": "Evidence / POC",
     "headingImpact": "Impact",
     "headingRecommendation": "Remediation",
-    "headingRetestNotes": "Retest method"
+    "headingRetestNotes": "Retest method",
+    "headingRetestLog": "Retest log"
   },
   "roleModal": {
     "addRole": "Add role",
@@ -5065,5 +5067,19 @@
         "delete": "Delete execution-monitor records"
       }
     }
+  },
+  "vulnerabilityRetest": {
+    "startFailed": "The retest was not sent. Its prompt is saved in the branch; return there to continue.",
+    "title": "Retest vulnerability",
+    "button": "Retest",
+    "hint": "Each confirmation creates an independent branch from the original conversation, preserving its project and history for follow-up turns.",
+    "promptLabel": "Retest prompt",
+    "placeholderHint": "Placeholders are replaced when sending. You can also type them in follow-up messages.",
+    "confirm": "Confirm and start retest",
+    "defaultPrompt": "Please verify whether vulnerability {{vulnerability_id}} has been fixed. Update its status when verification is complete.",
+    "guidanceHeading": "Verification method (from the finding's retest notes):",
+    "promptRequired": "Enter a retest prompt.",
+    "navigationChanged": "You switched conversations. Return to the retest branch to send the prompt.",
+    "branchCreated": "The retest branch was created. Continue verification in that branch."
   }
 }

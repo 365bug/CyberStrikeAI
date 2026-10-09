@@ -42,3 +42,7 @@ Implemented strict recovery decoding in recovery_evidence.go, with exact field n
 MCP edits distinguish omitted activation fields from explicit booleans. Omitted fields preserve the manager state; Start/Stop and persisted disabled are synchronized so restart retains the requested state. Existing environment snapshot expansion is preserved.
 
 Tests added for malformed build/rollback journals, all independent review counterexamples, valid partial binary rename and final cleanup retries, and MCP stop/edit/start plus config reload. Targeted reproductions pass; original full Go, build, five-package race, and 277 JS checks passed before final evidence guard refinements. Final exact-patch validation follows in F5. No production external service was contacted.
+
+### F4 follow-up: activation round-trip consistency
+
+Final GET-to-edit inspection found that manager Start/Stop retained a stale disabled flag even after changing ExternalMCPEnable. Synchronize these two existing fields in the manager as well as persistence, and test the actual GET payload after Start followed by the UI-shaped edit. Maintainability assessment: external_manager.go is 1665 lines (high risk); this narrow fix adds only three assignments beside existing activation assignments, without new control flow or broad refactoring. The additional handler/MCP race suites validate this consistency change.

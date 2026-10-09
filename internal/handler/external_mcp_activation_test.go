@@ -74,6 +74,25 @@ func TestMCPEditPreservesStoppedState(t *testing.T) {
 	if !h.manager.GetConfigs()["stopped"].ExternalMCPEnable {
 		t.Fatal("explicit Start stayed disabled")
 	}
+	response := request("GET", "/api/external-mcp/stopped", nil)
+	var server ExternalMCPResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &server); err != nil {
+		t.Fatal(err)
+	}
+	if server.Config.Disabled {
+		t.Fatal("Start left a stale disabled field in the edit response")
+	}
+	// Round-trip the actual GET payload just as the UI does, removing enable.
+	encoded, _ := json.Marshal(server.Config)
+	var edit map[string]any
+	_ = json.Unmarshal(encoded, &edit)
+	delete(edit, "external_mcp_enable")
+	edit["description"] = "after explicit start"
+	body, _ = json.Marshal(map[string]any{"config": edit})
+	request("PUT", "/api/external-mcp/stopped", body)
+	if !h.manager.GetConfigs()["stopped"].ExternalMCPEnable {
+		t.Fatal("edit after Start stopped the MCP")
+	}
 	persisted, err = config.Load(path)
 	if err != nil {
 		t.Fatal(err)

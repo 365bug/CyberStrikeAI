@@ -46,3 +46,12 @@ Tests added for malformed build/rollback journals, all independent review counte
 ### F4 follow-up: activation round-trip consistency
 
 Final GET-to-edit inspection found that manager Start/Stop retained a stale disabled flag even after changing ExternalMCPEnable. Synchronize these two existing fields in the manager as well as persistence, and test the actual GET payload after Start followed by the UI-shaped edit. Maintainability assessment: external_manager.go is 1665 lines (high risk); this narrow fix adds only three assignments beside existing activation assignments, without new control flow or broad refactoring. The additional handler/MCP race suites validate this consistency change.
+
+## Verification and user documentation (F5)
+
+- Recovery code at fab7e603: `go test -race ./internal/update ./internal/handler` passed (84.580s / 16.692s). This includes malformed/null/duplicate/contradictory records, legacy and fresh State entry points, actual absence, pre-merge phase rejection and valid crash controls.
+- Final activation consistency change at ff50af02: `go test -race ./internal/handler ./internal/mcp -count=1` passed (18.658s / 3.281s), including Stop/edit/reload/Start/GET/edit behavior. Independent targeted handler tests also passed.
+- Full Go suite, `go build ./...`, 277 JS tests and shell syntax passed during implementation. A frozen-code full Go/build rerun and exact-head GitHub CI are tracked in F6 before integration.
+- Independent fresh-context code review at ff50af02 found no remaining blockers. Six independent recovery counterexamples were promoted to permanent tests and passed. No acceptance relies solely on test status: refusals assert retained journals/binary data, and valid controls prove continued recovery.
+- English and Chinese developer guides describe refusal/reconciliation behavior and MCP activation field precedence. No public request shape or release version changed.
+- Limits: local validation is macOS arm64; Windows/Linux results come from CI. No production restart/deployment smoke or exhaustive disk fault testing was performed.

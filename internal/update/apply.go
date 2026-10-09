@@ -390,6 +390,25 @@ func finishPendingBuild(ctx context.Context, snap *Snapshot, opts Options, res *
 		pending.BackupDir = state.BackupDir
 		pending.VersionBefore = state.VersionBefore
 		pending.VersionAfter = state.VersionAfter
+		pending.PreviousBinarySHA256 = state.PreviousBinarySHA256
+		if state.BinaryCommit != "" {
+			binaryCommit, resolveErr := gitCmd(ctx, snap.Root, "rev-parse", state.BinaryCommit)
+			previous, previousErr := gitCmd(ctx, snap.Root, "rev-parse", state.PreviousCommit)
+			if resolveErr != nil || previousErr != nil || (binaryCommit != updated && binaryCommit != previous) {
+				return &Error{Reason: "bad_state", Message: "旧恢复记录的二进制提交不属于这次更新，已保留现场"}
+			}
+			if state.BinarySHA256 != "" {
+				currentHash, hashErr := fileSHA256(bin)
+				if hashErr != nil || currentHash != state.BinarySHA256 {
+					return &Error{Reason: "binary_changed", Message: "当前二进制与旧恢复记录不一致，已保留现场"}
+				}
+			}
+			if binaryCommit == updated {
+				pending.BinarySHA256 = state.BinarySHA256
+			} else {
+				pending.PreviousBinarySHA256 = state.BinarySHA256
+			}
+		}
 	}
 
 	if pending.Commit == "" {
@@ -534,6 +553,9 @@ func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, s
 		currentHash, currentErr := fileSHA256(bin)
 		previousHash, previousErr := fileSHA256(bin + ".prev")
 		if currentErr == nil && previousErr == nil && currentHash == newHash {
+			if pending.PreviousBinarySHA256 != "" && previousHash != pending.PreviousBinarySHA256 {
+				return &Error{Reason: "binary_changed", Message: "旧二进制备份与恢复记录不一致，已保留现场，拒绝改写回滚记录"}
+			}
 			res.BinaryBuilt = true
 			res.PrevBinary = bin + ".prev"
 			res.NeedsRestart = true
@@ -550,6 +572,21 @@ func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, s
 			}
 			return nil
 		}
+	}
+	// A legacy marker without hashes is ambiguous when a rebuild differs from the
+	// installed binary. Only a clean VCS stamp for the previous commit can prove
+	// that another swap will preserve the right rollback binary.
+	if (pending.Legacy || pending.PreviousCommit != "") && pending.PreviousBinarySHA256 == "" {
+		revision := binaryRevision(bin)
+		previous, resolveErr := gitCmd(ctx, root, "rev-parse", pending.PreviousCommit)
+		if revision == "" || resolveErr != nil || revision != previous {
+			return &Error{Reason: "binary_state_unknown", Message: "旧恢复记录缺少二进制哈希，无法确认当前二进制属于更新前版本；已保留当前二进制和 .prev，请人工核对后恢复"}
+		}
+		hash, err := fileSHA256(bin)
+		if err != nil {
+			return &Error{Reason: "binary_state_unknown", Message: "无法校验更新前二进制：" + err.Error()}
+		}
+		pending.PreviousBinarySHA256 = hash
 	}
 	if pending.PreviousBinarySHA256 != "" && fileExists(bin) {
 		currentHash, hashErr := fileSHA256(bin)

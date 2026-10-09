@@ -66,6 +66,10 @@ func build(ctx context.Context, root, outPath string) error {
 // Linux (ETXTBSY) but renaming it aside is always allowed, so the old process keeps its
 // inode and the new path is complete before anyone can observe it.
 func installBinary(src, dst string) (string, error) {
+	// Validate the staged file before moving the live executable aside.
+	if err := os.Chmod(src, 0o755); err != nil {
+		return "", err
+	}
 	prev := ""
 	if fileExists(dst) {
 		prev = dst + ".prev"
@@ -75,9 +79,6 @@ func installBinary(src, dst string) (string, error) {
 		if err := os.Rename(dst, prev); err != nil {
 			return "", fmt.Errorf("保留旧二进制失败：%w", err)
 		}
-	}
-	if err := os.Chmod(src, 0o755); err != nil {
-		return prev, err
 	}
 	if err := os.Rename(src, dst); err != nil {
 		// Put the kept-previous binary back rather than leaving the install with no
@@ -127,12 +128,16 @@ func binaryRevision(path string) string {
 	if err != nil {
 		return ""
 	}
+	var revision string
 	for _, setting := range info.Settings {
+		if setting.Key == "vcs.modified" && setting.Value == "true" {
+			return ""
+		}
 		if setting.Key == "vcs.revision" {
-			return strings.TrimSpace(setting.Value)
+			revision = strings.TrimSpace(setting.Value)
 		}
 	}
-	return ""
+	return revision
 }
 
 // tail keeps the last bytes of a compiler's output: the end of a build log is where the

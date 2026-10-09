@@ -532,3 +532,25 @@ func readTestFile(t *testing.T, path string) string {
 	}
 	return string(data)
 }
+
+func TestWriteVersionAfterCommentedDocumentStart(t *testing.T) {
+	for _, prefix := range []string{"# local settings\n---\n", "\n# local settings\n--- # config\n", "%YAML 1.1\n---\n"} {
+		t.Run(prefix, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := prefix + "server:\n  port: 8088\n"
+			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := WriteVersion(path, "v1.2.3"); err != nil || !changed {
+				t.Fatalf("write: %v %v", changed, err)
+			}
+			cfg, err := Load(path)
+			if err != nil || cfg.Server.Port != 8088 {
+				t.Fatalf("settings lost after version write: cfg=%+v err=%v", cfg, err)
+			}
+			if got := readTestFile(t, path); got != prefix+"version: \"v1.2.3\"\nserver:\n  port: 8088\n" {
+				t.Fatalf("unexpected rewrite: %q", got)
+			}
+		})
+	}
+}

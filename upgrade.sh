@@ -545,16 +545,17 @@ for i, line in enumerate(lines):
 if not refused:
     if not replaced:
         insert_at = 0
-        if lines:
-            first = lines[0].rstrip("\r\n")
-            if first.startswith("\ufeff"):
-                first = first[1:]
+        for i, line in enumerate(lines):
+            first = line.rstrip("\r\n").lstrip("\ufeff")
             rest = first[3:] if first.startswith("---") else None
             if rest is not None and (not rest.strip(" \t") or rest[:1] in (" ", "\t") and rest.lstrip(" \t").startswith("#")):
-                insert_at = 1
-                if not lines[0].endswith(("\n", "\r")):
-                    lines[0] += "\n"
-                    out[0] = lines[0]
+                insert_at = i + 1
+                if not line.endswith(("\n", "\r")):
+                    out[i] += "\n"
+                break
+            trimmed = first.strip()
+            if trimmed and not trimmed.startswith("#") and not first.startswith("%"):
+                break
         out.insert(insert_at, 'version: "%s"\n' % tag)
 
     original_mode = stat.S_IMODE(os.stat(path).st_mode)

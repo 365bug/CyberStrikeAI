@@ -1840,11 +1840,18 @@ func WriteVersion(path, version string) (bool, error) {
 	}
 	if !replaced {
 		versionLine := `version: "` + version + `"`
-		if len(lines) > 0 && yamlDocumentStart(lines[0]) {
-			lines = append([]string{lines[0], versionLine}, lines[1:]...)
-		} else {
-			lines = append([]string{versionLine}, lines...)
+		insertAt := 0
+		for i, line := range lines {
+			if yamlDocumentStart(line) {
+				insertAt = i + 1
+				break
+			}
+			trimmed := strings.TrimSpace(strings.TrimPrefix(line, "\uFEFF"))
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(line, "%") {
+				break
+			}
 		}
+		lines = append(lines[:insertAt], append([]string{versionLine}, lines[insertAt:]...)...)
 	}
 	out := strings.Join(lines, "\n")
 	if out == string(data) {

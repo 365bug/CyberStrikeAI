@@ -586,3 +586,139 @@ func TestRetryAfterMergeRestoresOnlyUntouchedProtectedContent(t *testing.T) {
 		})
 	}
 }
+
+// Legacy records cannot tell an installed rebuild from a binary still owed.
+// A different build of the same source must never be promoted into .prev.
+func TestLegacyPendingWithUnprovableBinaryPreservesRollback(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	scriptFakeGo(t)
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	tr.upstreamCommit(t, "second", map[string]string{"internal_service.go": "package service\nconst Version = \"2\"\n"})
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := readState(tr.install)
+	st.BinaryCommit, st.BinarySHA256, st.PreviousBinarySHA256 = "", "", ""
+	if err := writeState(tr.install, st); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, bin, "different build of the updated commit")
+	writeFile(t, buildPendingPath(tr.install), "source is ahead of the binary\n")
+	head := mustGit(t, tr.install, "rev-parse", "HEAD")
+	_, err := Apply(context.Background(), buildOpts(tr), nil)
+	if ue, ok := err.(*Error); !ok || ue.Reason != "binary_state_unknown" {
+		t.Fatalf("want binary_state_unknown, got %v", err)
+	}
+	if got := readFile(t, bin+".prev"); got != "original binary" {
+		t.Fatalf("rollback binary overwritten: %q", got)
+	}
+	if got := readFile(t, bin); got != "different build of the updated commit" {
+		t.Fatalf("live binary overwritten: %q", got)
+	}
+	if got := mustGit(t, tr.install, "rev-parse", "HEAD"); got != head {
+		t.Fatal("refusal moved HEAD")
+	}
+	if !buildPending(tr.install) {
+		t.Fatal("refusal cleared recovery marker")
+	}
+}
+
+func TestLegacyMarkerUsesRecordedHashForADifferentInstalledBuild(t *testing.T) {
+	requireGit(t)
+	tr := newTree(t)
+	scriptFakeGo(t)
+	bin := filepath.Join(tr.install, Binary)
+	writeFile(t, bin, "original binary")
+	tr.upstreamCommit(t, "second", map[string]string{"internal_service.go": "package service\nconst Version = \"2\"\n"})
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, bin, "another valid build recorded by the updater")
+	st, _ := readState(tr.install)
+	var err error
+	st.BinarySHA256, err = fileSHA256(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeState(tr.install, st); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, buildPendingPath(tr.install), "source is ahead of the binary\n")
+	if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, bin+".prev"); got != "original binary" {
+		t.Fatalf("rollback binary overwritten: %q", got)
+	}
+	if _, err := Rollback(context.Background(), buildOpts(tr)); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, bin); got != "original binary" {
+		t.Fatalf("rollback binary = %q", got)
+	}
+}
+
+func TestInstallBinaryMissingStagingKeepsLiveAndPrevious(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, Binary)
+	writeFile(t, bin, "live binary")
+	writeFile(t, bin+".prev", "rollback binary")
+	if _, err := installBinary(filepath.Join(dir, "missing-staging"), bin); err == nil {
+		t.Fatal("missing staging must fail")
+	}
+	if got := readFile(t, bin); got != "live binary" {
+		t.Fatalf("live binary lost: %q", got)
+	}
+	if got := readFile(t, bin+".prev"); got != "rollback binary" {
+		t.Fatalf("previous binary lost: %q", got)
+	}
+}
+
+func TestLegacyMarkerRefusesContradictoryState(t *testing.T) {
+	for _, tc := range []struct {
+		name, reason string
+		badCommit    bool
+	}{
+		{name: "unrelated binary commit", reason: "bad_state", badCommit: true},
+		{name: "changed binary hash", reason: "binary_changed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireGit(t)
+			tr := newTree(t)
+			scriptFakeGo(t)
+			bin := filepath.Join(tr.install, Binary)
+			writeFile(t, bin, "original binary")
+			tr.upstreamCommit(t, "second", map[string]string{"internal_service.go": "package service\nconst Version = \"2\"\n"})
+			if _, err := Apply(context.Background(), buildOpts(tr), nil); err != nil {
+				t.Fatal(err)
+			}
+			st, _ := readState(tr.install)
+			if tc.badCommit {
+				st.BinaryCommit = "not-a-commit"
+			} else {
+				st.BinarySHA256 = strings.Repeat("0", 64)
+			}
+			if err := writeState(tr.install, st); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, buildPendingPath(tr.install), "source is ahead of the binary\n")
+			live := readFile(t, bin)
+			stateBytes := readFile(t, statePath(tr.install))
+			_, err := Apply(context.Background(), buildOpts(tr), nil)
+			if ue, ok := err.(*Error); !ok || ue.Reason != tc.reason {
+				t.Fatalf("want %s, got %v", tc.reason, err)
+			}
+			if got := readFile(t, bin); got != live {
+				t.Fatal("refusal changed live binary")
+			}
+			if got := readFile(t, bin+".prev"); got != "original binary" {
+				t.Fatal("refusal changed rollback binary")
+			}
+			if got := readFile(t, statePath(tr.install)); got != stateBytes {
+				t.Fatal("refusal rewrote state")
+			}
+		})
+	}
+}

@@ -77,6 +77,8 @@ func TestUpgradeScriptUpdateConfigVersionPreservesDocumentAndMode(t *testing.T) 
 		wantDocumentStart bool
 	}{
 		{name: "document start", original: "---\nserver:\n  port: 8088\n", wantDocumentStart: true},
+		{name: "commented document start", original: "# local settings\n---\nserver:\n  port: 8088\n"},
+		{name: "directive document start", original: "%YAML 1.1\n---\nserver:\n  port: 8088\n"},
 		{name: "private mode", original: "version: \"v1.0.0\"\nserver:\n  port: 8088\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

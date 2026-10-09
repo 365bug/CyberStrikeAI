@@ -250,3 +250,9 @@ High-value tests:
 - One-click update: `internal/update/` (status, apply, rollback), HTTP surface in
   `internal/handler/update.go`, CLI switches in `cmd/server/update_cli.go`, thin shell in
   `upgrade.sh`
+
+### Recovery evidence and MCP activation edits
+
+Self-update recovery validates JSON field names/types, duplicate keys, commit/hash relationships and the actual binary files before resuming filesystem changes. The plain-text legacy build marker remains supported, but any accompanying State is validated too. An ambiguous, incomplete or unsupported record is refused with the files and recovery evidence preserved. Do not delete a pending record just to bypass the refusal: first reconcile the source commit, live binary and previous binary/backup.
+
+Editing an existing external MCP without activation fields preserves its current enabled/stopped state. Explicit `disabled` or `external_mcp_enable` fields change activation; `disabled: true` takes precedence. A new server defaults to enabled. Start/Stop also persist the corresponding disabled state, so editing or restarting the application does not silently enable a stopped server.

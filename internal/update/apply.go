@@ -73,11 +73,17 @@ func readBuildPending(root string) (buildPendingState, bool, error) {
 	if err != nil {
 		return st, true, err
 	}
-	if err := json.Unmarshal(data, &st); err != nil {
+	if err := decodeRecoveryJSON(data, &st); err != nil {
 		if strings.TrimSpace(string(data)) == "source is ahead of the binary" {
+			if _, _, stateErr := recoveryState(root); stateErr != nil {
+				return st, true, stateErr
+			}
 			return buildPendingState{Legacy: true}, true, nil
 		}
 		return buildPendingState{}, true, fmt.Errorf("待编译状态格式损坏: %w", err)
+	}
+	if err := validateBuildEvidence(root, st); err != nil {
+		return st, true, err
 	}
 	return st, true, nil
 }
@@ -476,6 +482,14 @@ func finishPendingBuild(ctx context.Context, snap *Snapshot, opts Options, res *
 	if err != nil {
 		return &Error{Reason: "bad_state", Message: "待编译状态里的提交不存在：" + pending.Commit}
 	}
+	fileEvidence := pending
+	if target != head {
+		// Before the source move only the original binary/absence is valid.
+		fileEvidence.BinarySHA256 = ""
+	}
+	if err := validateBuildFiles(bin, fileEvidence); err != nil {
+		return &Error{Reason: "bad_state", Message: "恢复证据不足，已保留二进制和记录：" + err.Error()}
+	}
 	if target != head {
 		if pending.PreviousCommit != "" {
 			previous, previousErr := gitCmd(ctx, snap.Root, "rev-parse", pending.PreviousCommit)
@@ -585,6 +599,9 @@ func buildAndSwap(ctx context.Context, root string, opts Options, res *Result, s
 		return &Error{Reason: "build_failed", Message: "无法校验新二进制：" + err.Error()}
 	}
 	bin := filepath.Join(root, opts.binaryName())
+	if err := validateBuildFiles(bin, pending); err != nil {
+		return &Error{Reason: "binary_changed", Message: "编译后恢复证据不再匹配，已保留现场：" + err.Error()}
+	}
 	if pending.Legacy && fileExists(bin) && fileExists(bin+".prev") {
 		currentHash, currentErr := fileSHA256(bin)
 		previousHash, previousErr := fileSHA256(bin + ".prev")
@@ -917,7 +934,10 @@ func Rollback(ctx context.Context, opts Options) (*Result, error) {
 			return nil, &Error{Reason: "moved_since_update", Message: "回滚中断后 HEAD 已经变了，拒绝覆盖后续提交"}
 		}
 	}
-	st, ok := readState(root)
+	st, ok, stateErr := recoveryState(root)
+	if stateErr != nil {
+		return nil, &Error{Reason: "state_unreadable", Message: "无法读取回滚状态：" + stateErr.Error()}
+	}
 	if !ok {
 		return nil, &Error{Reason: "no_state", Message: "没有可回滚的更新记录"}
 	}

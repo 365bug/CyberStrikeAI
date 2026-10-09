@@ -13,3 +13,15 @@ Maintainability gate: `apply.go` has 1099 lines and combines recovery orchestrat
 - R1 / PRR-007: editing an existing MCP without an explicit enable/disable field preserves its runtime activation state. Explicit activation fields and Start/Stop remain supported; a new server defaults to enabled. Environment expansion remains isolated from persisted raw values.
 - R2 / PRR-002: incomplete, null, duplicate-key, malformed, or contradictory recovery evidence cannot authorize a second swap, wrong rollback binary, or deletion of recovery records. Valid current records and the documented legacy marker retain safe recovery.
 - Non-goals: redesigning update UX, changing release policy, or unrelated refactoring. The two nonblocking review observations are outside this corrective slice unless required by the evidence validation boundary.
+
+## Design (F2)
+
+Recovery remains an internal on-disk contract, with no new HTTP fields. Decode exact JSON field names and types, reject duplicate keys at every depth and null scalars, and reject unknown fields rather than interpreting a newer format as current evidence. The one documented plain-text legacy build marker remains supported by its existing conservative path.
+
+For JSON build records require a target commit and exactly one proof of the old binary (SHA256 or explicit absence), validate hash/commit shapes, and reconcile the record with any persisted State for the same update or its immediate predecessor. Before restoring protected content or building, verify the live/previous files match the indicated pre-swap or post-swap phase. A successful State cannot be reinterpreted as an owed build.
+
+Rollback records require an explicit restore_binary decision; reconcile it, the live/previous hashes and the nested State, then compare with the persisted State when it still exists. Missing persisted State is allowed after the final cleanup crash window, but the self-contained record must remain coherent. Invalid evidence returns an existing state_unreadable/bad_state error and preserves recovery files.
+
+MCP request decoding retains field presence separately from bool values. For existing entries, omission preserves the manager's activation state; explicit disabled or external_mcp_enable fields determine it. New entries default to enabled. Keep raw configuration persistence and environment-expanded connection snapshots separate as today.
+
+Compatibility: properly written current journals remain readable, legacy plain-text recovery remains guarded; hand-edited or unsupported JSON requires manual correction instead of guessed mutation. Rollback of this patch restores old behavior and is not recommended while invalid journals remain.

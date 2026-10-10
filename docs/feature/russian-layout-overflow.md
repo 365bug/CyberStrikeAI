@@ -27,3 +27,12 @@ Touch style.css existing navigation/dashboard rules and index.html stylesheet ca
 
 Shared navigation labels now wrap instead of ellipsis. Risk header wraps badge/label, urgent and batch labels are bounded and wrap. Severity legend gives remaining space to complete label text and intrinsic space to numeric columns. Status cards auto-fit with a 110px preferred minimum and bounded multiline labels; progress stacks until chart container has at least 1000px. Container queries at 760/480px adapt risk/chart/legend to the real panel width. Header actions wrap; main grid no longer expands from min-content. Updated stylesheet cache key.
 Validation before code commit: headless Chrome 42 language/theme/width scenarios passed for measured label containment, no overlapping status cards and main card element boundaries; existing mobile i18n 8/8 tests and diff check passed.
+
+## F5 Verification
+
+- Chrome/Playwright temporary harness `/tmp/csai-layout-qa.cjs`: actual index.html, style.css/mobile.css, bundled i18next, actual i18n.js changeLanguage/applyTranslations and all three dictionaries. Network/backend replaced with local resource fixtures; no live authentication or backend requests.
+- 42 scenarios: zh-CN/en-US/ru-RU × light/dark × 320/390/768/1024/1440/1920/2938 CSS pixels. PASS: target labels stay within their parents, no horizontal text overflow, status cards do not overlap, risk/legend/status/header elements stay within chart card. Dark scenarios use 99,999 counts and critical risk text; light scenarios use zero counts. Real card decorative glow intentionally extends beyond chart bounds; not a label overflow.
+- Additional PASS: collapsed desktop sidebar hides labels; mobile expanded sidebar labels remain contained at 320/390px; false-positive cell click and Enter preserve inline filter dispatch (navigation stub, no live API).
+- `node --test web/static/js/mobile-ui-i18n.test.cjs`: 8/8 PASS. `git diff --check`: PASS.
+- Screenshots/results at `/tmp/csai-layout-proof/`; manually inspected Russian desktop light and mobile dark. Screenshot fixture omits backend-driven donut SVG and dynamic status/theme labels, which were not modified.
+- Scope limitation: focused dashboard/shared navigation visual checks, not a full application page audit or live-server end-to-end test. No backend code changed. Implementation commit 132babe3 pushed; preceding phase commits e82ee59f/c356e514/3889de46/f6f93a1b pushed.

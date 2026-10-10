@@ -41,3 +41,15 @@ PUT 必须携带完整精确匹配的 If-Match；未提供返回 428/tool_guard_
 已实现持锁 ETag 比较与版本推进，强制条件保存；无条件写入 428，旧版本 409，成功保存返回新版本。前端独立记录基线版本，错误不会采用响应新版本，保留草稿；只在 GET/PUT 处理版本，试匹配不参与。中英俄提示及脚本缓存版本已更新。
 
 专项 race 测试通过（3.246s），覆盖 12 个并发请求仅 1 成功、落盘/运行策略与成功回执一致、顺序旧草稿失败、缺版本/星号/弱版本拒绝、无变化保存推进版本、落盘失败可安全重试、manager 直接更新冲突。前端 36/36 通过（135ms），覆盖两个页面竞争、重试不偷偷换版本、草稿保留、重新读取后保存、失败版本保留及试匹配无版本头。JS syntax/diff check 通过；完整 handler 回归正在执行。
+
+## F5 Verification / Documentation
+
+- `go test -race ./internal/handler -run ToolGuard -count=1`：PASS，3.246s。读写和冲突比较均使用原锁，无数据竞争报告。
+- `go test ./internal/handler -count=1`：PASS，20.512s。共享 ConfigHandler 和其他 handler 完整包回归通过。
+- `node --test web/static/js/tool-guard.test.cjs`：36/36 PASS，135ms。
+- `node --check web/static/js/tool-guard.js`、中英俄 JSON 解析与新提示存在校验、`git diff --check`：PASS。
+- 中英调用拦截文档和 Unreleased changelog 已记录 GET/PUT 版本协议、错误码、草稿恢复和旧客户端迁移。
+- 检查实际 apiFetch：使用 Headers 保留传入 If-Match，返回原生 Response，409/428 交由调用方处理。i18n 使用 no-cache；JS 模板缓存版本已更新。
+- 未执行线上双账号写入、完整仓库套件或浏览器视觉检查：本次不部署、不改变视觉布局，测试使用临时文件、handler 请求上下文和现有前端 DOM fixture。多实例保证不在本次范围。
+
+实现提交 `1ecbd405` 已推送；F0–F3 文档提交为 `65f947c9`、`7e6feeb9`、`23034ffa`、`4a1d0e11`，均已推送。

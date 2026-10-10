@@ -1022,6 +1022,8 @@
     "loadFirst": "请先加载拦截配置",
     "requiredFields": "请填写每条规则的名称和匹配正则",
     "saveSuccess": "调用拦截配置已保存，后续工具调用将使用新配置。",
+    "saveConflict": "调用拦截配置已被其他用户修改，本次修改未保存。请刷新页面获取最新配置后重试。",
+    "versionRequired": "缺少调用拦截配置版本，请刷新页面后重试。",
     "saveFailed": "保存失败",
     "defaultMessage": "识别到 {match}，调用被规则「{rule}」拦截。请检查目标与操作后重试。",
     "blocked": "已命中规则：将阻止调用",

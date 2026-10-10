@@ -29,3 +29,9 @@ PUT 必须携带完整精确匹配的 If-Match；未提供返回 428/tool_guard_
 前端将 ETag 独立保存，PUT 携带读取时版本，成功才更新；冲突不采用错误响应上的新版本、不自动重试，保留原输入。中英俄文提示：配置已被其他用户修改，本次修改未保存，请刷新后重试。试匹配不带 If-Match，不更新版本。缺少响应版本不能静默发无条件写入。
 
 兼容：旧 API 客户端需先 GET 再使用返回 ETag 提交 PUT；前后端同时升级，更新脚本缓存版本。整个列表任意编辑触发版本变化，不同规则同时保存也会冲突。仅保证当前服务实例内协调；多实例共享配置需另行引入持久化条件更新。
+
+## F3 Implementation Plan
+
+修改 internal/handler/config.go 一个字段、tool_guard.go 的版本协议；扩展专项 handler 测试验证真实并发单赢家、顺序旧草稿、无条件写拒绝、无变化保存、失败版本不变、manager 直接更新。修改 tool-guard.js 的版本状态和请求头，中英俄语言提示及 index.html 的 JS 缓存版本；扩展现有 VM 前端测试验证两个页面冲突、草稿保留、重试不换版本、成功更新版本、试匹配无副作用。更新中英文调用拦截文档、Unreleased changelog。
+
+验证命令：go test -race ./internal/handler -run ToolGuard；node --test web/static/js/tool-guard.test.cjs；node --check web/static/js/tool-guard.js；git diff --check。必要时完整 handler 测试确认共享 ConfigHandler 无回归。测试只用临时目录和请求 fixture，不触碰线上业务数据。回滚需要前后端一起回滚，但会恢复覆盖风险；不执行部署。

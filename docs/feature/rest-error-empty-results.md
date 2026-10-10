@@ -20,3 +20,11 @@
 ## F3：实施计划
 
 改动 c2.go 的 DeleteProfile、webshell.go 的 DeleteConnection、database/vulnerability.go 的列表初始化、batch_task_manager.go 的 ListQueuesForAccess 初始化。添加独立 HTTP 合同测试，临时数据库验证缺失、成功删除和重复删除、真实 SQL 失败、空库、筛选无匹配及有结果列表；批量列表含内存路径。运行针对性测试及 handler/database 包测试、git diff --check。更新 changelog 与验证记录。回退使用本分支修复提交的 revert。
+
+## F4：实施结果
+
+- C2 Profile 删除将 sql.ErrNoRows 映射为 404；真实错误写内部日志，对外通用 500 文案。
+- WebShell 删除使用 errors.Is 识别缺失，对外数据库错误改为通用 500 文案，底层已有日志保留。
+- 漏洞数据库列表、批量队列业务列表初始化为空切片，成功的无记录查询序列化为 []；后者同时覆盖数据库与内存路径。
+- 独立 httptest 回归覆盖缺失、成功删除、重复删除、SQL 错误脱敏、两类空列表、非空结果和批量内存分支。
+- 修复前回归按预期失败，明确捕获原行为；修复后 `go test ./internal/handler -run '^TestREST(Delete|VulnerabilityList|BatchList)Semantics$' -count=1` 通过。

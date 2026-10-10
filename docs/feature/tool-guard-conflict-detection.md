@@ -61,3 +61,5 @@ PUT 必须携带完整精确匹配的 If-Match；未提供返回 428/tool_guard_
 草稿 PR 描述：两名用户读取相同规则后分别保存时，原接口会接受旧草稿并覆盖首次保存。增加强 ETag/If-Match 保护，使同一版本仅一次成功，旧版本返回 409、缺版本返回 428；前端保留冲突草稿，并提供中英俄提示。验证：专项 race、完整 handler、36 项前端测试、JS syntax/JSON/diff 检查通过。API 调用方需先 GET 再携带 ETag 保存。整个规则列表按同一版本保护，需前后端同时升级。
 
 代码修复完成，待 PR 审阅合并；未发布或部署，不声明线上已解决。多实例共享配置、编辑占用租约不在此修复范围。
+
+草稿 PR：[AIPentest/CyberStrikeAI #351](https://github.com/AIPentest/CyberStrikeAI/pull/351)。F5 验证记录 7302c3d8、F6 审阅记录 8477bfcc 均已推送。远端镜像：未同步（本次未构建镜像）。

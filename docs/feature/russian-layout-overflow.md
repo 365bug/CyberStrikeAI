@@ -18,3 +18,7 @@ REQ/AC-003: Chinese/English, light/dark, desktop/tablet/mobile and collapsed sid
 ## F2 Design
 
 Use existing shared styles with language-independent wrapping, bounded flex children and auto-fit grid tracks. Status panel uses container width to decide whether progress fits alongside cards; avoid viewport-only decisions when dashboard sits beside a right column. Keep existing colors, semantics, event handlers and translations. Sidebar labels wrap with stable nonshrinking icons; collapsed rules continue hiding labels.
+
+## F3 Implementation Plan
+
+Touch style.css existing navigation/dashboard rules and index.html stylesheet cache key. Constrain and wrap risk/urgent/status/severity/batch labels; make status grid auto-fit and progress responsive to actual panel width. Verify real extracted dashboard/sidebar template with actual i18n dictionaries in headless Chromium at 320/390/768/1024/1440/1920/2938px, light/dark and all three languages; inspect screenshots. Check overlap and label containment, collapsed/sidebar states, nonzero large values and diff whitespace. Record evidence and Unreleased fix. Rollback via reverting scoped implementation commit; no backend changes.

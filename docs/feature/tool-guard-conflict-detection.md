@@ -63,3 +63,9 @@ PUT 必须携带完整精确匹配的 If-Match；未提供返回 428/tool_guard_
 代码修复完成，待 PR 审阅合并；未发布或部署，不声明线上已解决。多实例共享配置、编辑占用租约不在此修复范围。
 
 草稿 PR：[AIPentest/CyberStrikeAI #351](https://github.com/AIPentest/CyberStrikeAI/pull/351)。F5 验证记录 7302c3d8、F6 审阅记录 8477bfcc 均已推送。远端镜像：未同步（本次未构建镜像）。
+
+## F8 Merge Summary — 2026-10-10
+
+用户授权检视无问题后合并 main。检视快照：base `a8321c4bff3a76fe0dfc3b576ed116e9a4d4101e`，head `5d44b59c2fbd8ec2df27949daa791f503cdbe988`；没有阻断 finding。重新执行专项 handler race（4.347s）、完整 handler（20.798s）、36 项前端测试（184ms）、JS syntax、三语言 JSON 和 diff 检查均通过；Self-update 三平台 CI 成功。
+
+PR #351 在 2026-10-10 17:34:52 Asia/Shanghai 合并，merge commit `2335f1b639d0cd42a3ec7907e5e86f166a5d8f4a`。合并命令使用 match-head-commit 绑定检视提交，远端回执 merged=true；本地 main 已 fast-forward，合并树与检视 head 无差异。此记录替代上文待审阅合并状态。未发布版本、构建镜像或升级运行服务。

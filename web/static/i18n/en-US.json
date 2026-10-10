@@ -1034,6 +1034,8 @@
     "loadFirst": "Load the blocking configuration first",
     "requiredFields": "Enter a name and pattern for every rule",
     "saveSuccess": "Call blocking configuration saved. Subsequent tool calls will use the new configuration.",
+    "saveConflict": "Another user has modified the call interception configuration. Your changes were not saved. Refresh the page to load the latest configuration and try again.",
+    "versionRequired": "The call interception configuration version is missing. Refresh the page and try again.",
     "saveFailed": "Save failed",
     "defaultMessage": "Detected {match}. Rule “{rule}” blocked this call. Review the target and operation before trying again.",
     "blocked": "Rule matched: this call will be blocked",

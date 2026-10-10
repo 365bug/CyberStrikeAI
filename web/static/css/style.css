@@ -365,10 +365,11 @@ html[data-theme="dark"] .main-sidebar-nav:hover::-webkit-scrollbar-thumb:hover {
     flex: 1;
     font-size: 0.9375rem;
     font-weight: 400;
-    white-space: nowrap;
-    /* 防止长标题顶到边界：在右侧内边距内做省略而不是越界 */
-    overflow: hidden;
-    text-overflow: ellipsis;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+    /* 长翻译在图标之间换行，保持导航名称完整可读。 */
     opacity: 1;
     transition: opacity 0.2s ease;
 }
@@ -423,6 +424,7 @@ html[data-theme="dark"] .main-sidebar-nav:hover::-webkit-scrollbar-thumb:hover {
     transition: all 0.2s ease;
     color: var(--text-secondary);
     font-size: 0.875rem;
+    overflow-wrap: anywhere;
     position: relative;
     border-left: 3px solid transparent;
 }
@@ -23904,6 +23906,8 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 }
 
 .dashboard-kpi-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-size: 0.8125rem;
     color: var(--text-secondary);
     font-weight: 500;
@@ -24443,7 +24447,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 /* 两列主内容网格 */
 .dashboard-grid {
     display: grid;
-    grid-template-columns: 1fr 380px;
+    grid-template-columns: minmax(0, 1fr) 380px;
     gap: 24px;
     align-items: start;
 }
@@ -24455,6 +24459,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 }
 
 .dashboard-main {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 24px;
@@ -24498,7 +24503,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-batch-side-stats {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -24529,7 +24534,9 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 .dashboard-batch-side-stat-label {
     font-size: 0.6875rem;
     color: var(--text-secondary);
-    white-space: nowrap;
+    max-width: 100%;
+    text-align: center;
+    overflow-wrap: anywhere;
 }
 
 .dashboard-batch-side-progress-bar {
@@ -24584,6 +24591,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 /* 章节标题 + 「查看全部」链接横排（标题不再单独占下边框） */
 .dashboard-section-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
@@ -24616,6 +24624,8 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-section-actions {
     display: inline-flex;
+    flex-wrap: wrap;
+    max-width: 100%;
     align-items: center;
     gap: 10px;
     margin-left: auto;
@@ -25647,6 +25657,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-severity-insight-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
@@ -25657,7 +25668,9 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     color: var(--text-secondary);
     font-weight: 500;
     letter-spacing: 0.02em;
-    white-space: nowrap;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .dashboard-severity-insight-risk-badge {
@@ -25667,7 +25680,9 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     border-radius: 999px;
     letter-spacing: 0.02em;
     line-height: 1.4;
-    white-space: nowrap;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
     flex-shrink: 0;
 }
 
@@ -25789,11 +25804,14 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 }
 
 .dashboard-severity-insight-urgent-label {
+    text-align: center;
     font-size: 0.6875rem;
     color: var(--text-secondary);
     font-weight: 500;
     letter-spacing: 0.02em;
-    white-space: nowrap;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 /* —— 最近发现 —— */
@@ -26172,8 +26190,8 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-severity-legend-item {
     display: grid;
-    /* 标签列有上限；末尾 1fr 吸收侧栏余量，空白在百分比右侧而非标签与数字之间 */
-    grid-template-columns: 12px minmax(0, 5.5rem) 2.5em 3em minmax(0, 1fr);
+    /* 标签使用剩余宽度；数值列随内容扩展。 */
+    grid-template-columns: 12px minmax(0, 1fr) max-content max-content;
     column-gap: 10px;
     align-items: center;
     padding: 10px 4px;
@@ -26238,9 +26256,8 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     color: var(--text-primary);
     font-weight: 500;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .dashboard-severity-legend-value {
@@ -26262,7 +26279,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     padding-top: 18px;
     border-top: 1px dashed rgba(0, 0, 0, 0.08);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     align-items: center;
 }
@@ -26276,16 +26293,9 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-severity-status-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 110px), 1fr));
     gap: 12px;
     min-width: 0;
-}
-
-@media (max-width: 1180px) {
-    .dashboard-severity-status-grid {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 8px;
-    }
 }
 
 @media (max-width: 480px) {
@@ -26363,7 +26373,10 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     font-size: 0.75rem;
     color: var(--text-secondary);
     margin-top: 4px;
-    white-space: nowrap;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
     line-height: 1.2;
 }
 
@@ -26394,6 +26407,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-severity-progress-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
@@ -26407,6 +26421,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-severity-progress-value {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: baseline;
     gap: 6px;
 }
@@ -26454,11 +26469,15 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 .dashboard-severity-progress-legend-item {
     display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
     align-items: center;
     gap: 4px;
 }
 
 .dashboard-severity-progress-legend-dot {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
     border-radius: 2px;
@@ -26473,6 +26492,45 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     .dashboard-severity-status-cell { transition: none; }
     .dashboard-severity-progress-fixed,
     .dashboard-severity-progress-confirmed { transition: none; }
+}
+
+/* 根据卡片可用宽度调整多列布局，兼容长翻译与侧栏。 */
+.dashboard-section-chart {
+    container-type: inline-size;
+    container-name: dashboard-severity;
+}
+
+@container dashboard-severity (max-width: 760px) {
+    .dashboard-severity-wrap {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .dashboard-severity-wrap .dashboard-severity-insights {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    .dashboard-severity-insights > * {
+        flex: 1 1 160px;
+        min-width: 0;
+    }
+}
+
+@container dashboard-severity (max-width: 480px) {
+    .dashboard-severity-wrap {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .dashboard-severity-wrap .dashboard-severity-insights {
+        flex-direction: column;
+    }
+    .dashboard-severity-insights > * {
+        flex: auto;
+    }
+}
+
+@container dashboard-severity (min-width: 1000px) {
+    .dashboard-severity-status {
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    }
 }
 
 .dashboard-quick-links {

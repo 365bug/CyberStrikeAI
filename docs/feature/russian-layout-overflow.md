@@ -22,3 +22,8 @@ Use existing shared styles with language-independent wrapping, bounded flex chil
 ## F3 Implementation Plan
 
 Touch style.css existing navigation/dashboard rules and index.html stylesheet cache key. Constrain and wrap risk/urgent/status/severity/batch labels; make status grid auto-fit and progress responsive to actual panel width. Verify real extracted dashboard/sidebar template with actual i18n dictionaries in headless Chromium at 320/390/768/1024/1440/1920/2938px, light/dark and all three languages; inspect screenshots. Check overlap and label containment, collapsed/sidebar states, nonzero large values and diff whitespace. Record evidence and Unreleased fix. Rollback via reverting scoped implementation commit; no backend changes.
+
+## F4 Implementation
+
+Shared navigation labels now wrap instead of ellipsis. Risk header wraps badge/label, urgent and batch labels are bounded and wrap. Severity legend gives remaining space to complete label text and intrinsic space to numeric columns. Status cards auto-fit with a 110px preferred minimum and bounded multiline labels; progress stacks until chart container has at least 1000px. Container queries at 760/480px adapt risk/chart/legend to the real panel width. Header actions wrap; main grid no longer expands from min-content. Updated stylesheet cache key.
+Validation before code commit: headless Chrome 42 language/theme/width scenarios passed for measured label containment, no overlapping status cards and main card element boundaries; existing mobile i18n 8/8 tests and diff check passed.

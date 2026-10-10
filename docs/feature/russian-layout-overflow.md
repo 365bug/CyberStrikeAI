@@ -36,3 +36,7 @@ Validation before code commit: headless Chrome 42 language/theme/width scenarios
 - `node --test web/static/js/mobile-ui-i18n.test.cjs`: 8/8 PASS. `git diff --check`: PASS.
 - Screenshots/results at `/tmp/csai-layout-proof/`; manually inspected Russian desktop light and mobile dark. Screenshot fixture omits backend-driven donut SVG and dynamic status/theme labels, which were not modified.
 - Scope limitation: focused dashboard/shared navigation visual checks, not a full application page audit or live-server end-to-end test. No backend code changed. Implementation commit 132babe3 pushed; preceding phase commits e82ee59f/c356e514/3889de46/f6f93a1b pushed.
+
+## F6 Review / Release Record
+
+Scoped review complete: CSS presentation and cache version only, existing data/translation keys/navigation handlers preserved. Unreleased changelog added. Documentation, implementation and verification committed and pushed on codex/russian-layout-overflow. No merge, version release or deployment performed; ready for merge review. Recommended next step: merge this branch, then smoke the running instance in Russian. No outstanding implementation gap in the requested dashboard/navigation slice.

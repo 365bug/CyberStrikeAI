@@ -40,3 +40,7 @@ Validation before code commit: headless Chrome 42 language/theme/width scenarios
 ## F6 Review / Release Record
 
 Scoped review complete: CSS presentation and cache version only, existing data/translation keys/navigation handlers preserved. Unreleased changelog added. Documentation, implementation and verification committed and pushed on codex/russian-layout-overflow. No merge, version release or deployment performed; ready for merge review. Recommended next step: merge this branch, then smoke the running instance in Russian. No outstanding implementation gap in the requested dashboard/navigation slice.
+
+## F8 Merge Summary — 2026-10-10
+
+用户授权提交 main。合并前工作区干净，fetch 后 main 与 origin/main 均为 8ce62813，功能分支无远端主线冲突，diff check 通过。main 以 fast-forward 合并至 ab04c864，并成功推送 origin/main；实现提交 132babe3 与 F5 验证记录均已包含。合并没有改动已验证的实现，无需重复布局矩阵。此节替代 F6 的未合并状态；未发布版本或部署服务。

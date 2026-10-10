@@ -28,3 +28,12 @@
 - 漏洞数据库列表、批量队列业务列表初始化为空切片，成功的无记录查询序列化为 []；后者同时覆盖数据库与内存路径。
 - 独立 httptest 回归覆盖缺失、成功删除、重复删除、SQL 错误脱敏、两类空列表、非空结果和批量内存分支。
 - 修复前回归按预期失败，明确捕获原行为；修复后 `go test ./internal/handler -run '^TestREST(Delete|VulnerabilityList|BatchList)Semantics$' -count=1` 通过。
+
+## F5：验证与消费者文档
+
+- 修复前新增合同测试失败，分别捕获 C2 500、WebShell 表名泄露及两个列表 null（批量数据库/内存均覆盖）。
+- 修复后针对性合同测试通过。
+- `go test ./internal/handler ./internal/database -count=1` 全部通过（handler 20.597s，database 2.551s）。
+- `git diff --check` 通过。新增及改动 Go 文件已 gofmt。
+- 中英文 API 参考补充缺失删除、通用 500 和空列表 [] 合同。
+- 未执行线上请求或部署验证；HTTP 回归使用真实临时 SQLite，通过路由调用 handler，未覆盖完整认证中间件。权限规则未修改。

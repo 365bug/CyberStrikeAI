@@ -2893,6 +2893,7 @@
     "detailImpact": "影响",
     "detailRecommendation": "修复建议",
     "detailRetestNotes": "复测方式",
+    "detailRetestLog": "复测记录",
     "downloadOkTitle": "下载成功",
     "exportFailedMessage": "导出失败",
     "downloadFailed": "下载失败"
@@ -3858,7 +3859,8 @@
     "headingEvidence": "证据 / POC",
     "headingImpact": "影响",
     "headingRecommendation": "修复建议",
-    "headingRetestNotes": "复测方式"
+    "headingRetestNotes": "复测方式",
+    "headingRetestLog": "复测记录"
   },
   "roleModal": {
     "addRole": "添加角色",
@@ -5053,5 +5055,19 @@
         "delete": "删除执行监控记录"
       }
     }
+  },
+  "vulnerabilityRetest": {
+    "startFailed": "复测尚未成功发送，提示词已保存在分支中，请返回该分支继续。",
+    "title": "复测漏洞",
+    "button": "复测",
+    "hint": "每次确认都会从原始对话创建独立分支，继承原项目和历史，可继续多轮验证。",
+    "promptLabel": "复测提示词",
+    "placeholderHint": "占位符发送时自动替换，也支持在后续对话中手动输入。",
+    "confirm": "确认并开始复测",
+    "defaultPrompt": "请帮我对漏洞 {{vulnerability_id}} 进行验证，确认是否已修复。完成后更新该漏洞状态。",
+    "guidanceHeading": "验证方式（来自漏洞记录的复测方式）：",
+    "promptRequired": "请输入复测提示词。",
+    "navigationChanged": "已切换到其他对话，请返回复测分支继续发送。",
+    "branchCreated": "复测分支已创建，请在该分支继续验证。"
   }
 }

@@ -95,9 +95,9 @@ function navigateToConversation(conversationId) {
     }
 
     if (typeof loadConversation === 'function') {
-        void loadConversation(cid);
+        return loadConversation(cid);
     } else if (typeof window.loadConversation === 'function') {
-        void window.loadConversation(cid);
+        return window.loadConversation(cid);
     }
 }
 window.navigateToConversation = navigateToConversation;

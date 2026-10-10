@@ -608,6 +608,7 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 							"description": "修复建议",
 						},
 						"retest_notes": map[string]interface{}{"type": "string", "description": "复测方式"},
+						"retest_log":   map[string]interface{}{"type": "string", "description": "复测记录（只读，由复测流程追加）"},
 					},
 				},
 				"UpdateVulnerabilityRequest": map[string]interface{}{

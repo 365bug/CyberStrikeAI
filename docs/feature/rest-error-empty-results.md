@@ -16,3 +16,7 @@
 ## F2：接口设计
 
 保持原 JSON 字段名、成功删除响应和分页字段。C2 缺失映射为 {"error":"profile not found"}，WebShell 保持 connection not found。两者真正数据库错误记录内部日志，对外为稳定通用文案。列表在产生集合的现有方法初始化非 nil 空切片，覆盖数据库和内存路径。兼容性：消费者将收到 [] 而非 null；该变更为用户明确要求。
+
+## F3：实施计划
+
+改动 c2.go 的 DeleteProfile、webshell.go 的 DeleteConnection、database/vulnerability.go 的列表初始化、batch_task_manager.go 的 ListQueuesForAccess 初始化。添加独立 HTTP 合同测试，临时数据库验证缺失、成功删除和重复删除、真实 SQL 失败、空库、筛选无匹配及有结果列表；批量列表含内存路径。运行针对性测试及 handler/database 包测试、git diff --check。更新 changelog 与验证记录。回退使用本分支修复提交的 revert。

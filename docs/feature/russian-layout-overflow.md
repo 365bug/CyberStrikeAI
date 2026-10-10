@@ -14,3 +14,7 @@ Small corrective scope inferred from explicit bug report; no unresolved product 
 REQ/AC-001: Russian status labels stay inside their cards with no overlap, including false-positive labels.
 REQ/AC-002: Risk badge, severity names and navigation labels remain fully readable by wrapping within available space.
 REQ/AC-003: Chinese/English, light/dark, desktop/tablet/mobile and collapsed sidebar retain usable layout and click targets. Data/loading/error rendering and API contracts unchanged.
+
+## F2 Design
+
+Use existing shared styles with language-independent wrapping, bounded flex children and auto-fit grid tracks. Status panel uses container width to decide whether progress fits alongside cards; avoid viewport-only decisions when dashboard sits beside a right column. Keep existing colors, semantics, event handlers and translations. Sidebar labels wrap with stable nonshrinking icons; collapsed rules continue hiding labels.

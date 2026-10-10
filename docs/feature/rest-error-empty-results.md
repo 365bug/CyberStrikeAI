@@ -44,3 +44,10 @@
 - 差异自查：生产变更仅涉及四个方法，正常删除响应、鉴权、分页及非空列表行为保留；内部错误不会被缺失或空成功分支吞掉。
 - API 参考和 CHANGELOG 的 Unreleased/Fixed 已更新。null 到 [] 的迁移属于本次明确授权的合同修复。
 - 本分支各阶段已提交并推送；未创建 PR、合并或部署，发布后的线上验证留待部署阶段。
+
+## F8：main 合并记录（2026-10-10）
+
+- 用户明确授权验证通过后推送 main。
+- 获取远端最新状态后，origin/main 仍为起始提交 68df7c1；main 快进合并修复分支至 3da1d22b，无冲突。
+- 在合并后的 main 运行 `go test ./internal/handler ./internal/database -count=1` 全部通过（handler 20.748s，database 2.697s），`git diff --check origin/main..HEAD` 通过。
+- 本次 main 推送包含修复、HTTP 回归测试、中英文 API 文档及 CHANGELOG；未执行部署或线上数据操作。

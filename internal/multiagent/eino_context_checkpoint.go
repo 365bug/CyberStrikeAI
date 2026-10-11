@@ -1,11 +1,15 @@
 package multiagent
 
 import (
+	"bytes"
+	"crypto/md5"
 	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/database"
@@ -15,46 +19,85 @@ import (
 	"go.uber.org/zap"
 )
 
-// Content-addressed snapshots keep earlier evidence reachable after the mutable
-// transcript.txt alias advances to a later compaction round.
+var transcriptSnapshotWriteMu sync.Mutex
+
+const transcriptSnapshotTimeLayout = "20060102-150405.000000000-0700"
+
+// Time-stamped snapshots keep earlier evidence reachable after the mutable
+// alias advances. Short MD5 prefixes are labels, never evidence of equality.
 func writeSummarizationTranscriptSnapshot(path string, msgs []adk.Message) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", nil
 	}
 	body := []byte(formatSummarizationTranscript(msgs))
+	transcriptSnapshotWriteMu.Lock()
+	defer transcriptSnapshotWriteMu.Unlock()
 	dir := filepath.Join(filepath.Dir(path), "snapshots")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	digest := sha256.Sum256(body)
-	snapshot := filepath.Join(dir, fmt.Sprintf("transcript-%x.txt", digest))
-	if info, err := os.Stat(snapshot); os.IsNotExist(err) {
-		if err := writeContextArtifactAtomically(snapshot, body); err != nil {
-			return "", err
-		}
-	} else if err != nil {
+	snapshot, err := findOrCreateTranscriptSnapshot(dir, body, time.Now())
+	if err != nil {
 		return "", err
-	} else if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("snapshot is not a regular file: %s", snapshot)
-	}
-	// One immutable companion per snapshot avoids a shared mutable catalog and
-	// keeps discovery scoped to this conversation/agent, including concurrent runs.
-	indexPath := snapshot + ".index.md"
-	if info, err := os.Stat(indexPath); os.IsNotExist(err) {
-		index := buildTranscriptEvidenceIndex(snapshot, string(body), 32)
-		if err := writeContextArtifactAtomically(indexPath, []byte(index)); err != nil {
-			return "", err
-		}
-	} else if err != nil {
-		return "", err
-	} else if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("evidence index is not a regular file: %s", indexPath)
 	}
 	if err := writeContextArtifactAtomically(path, body); err != nil {
 		return "", err
 	}
 	return snapshot, nil
+}
+
+func findOrCreateTranscriptSnapshot(dir string, body []byte, timestamp time.Time) (string, error) {
+	prefix := fmt.Sprintf("%x", md5.Sum(body))[:5]
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	var candidates []string
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "transcript-"+prefix+"-") && strings.HasSuffix(entry.Name(), ".txt") {
+			candidates = append(candidates, filepath.Join(dir, entry.Name()))
+		}
+	}
+	// Existing SHA-256 names remain valid after upgrading; never rename evidence
+	// referenced by older summaries or create a duplicate on an identical retry.
+	legacy := filepath.Join(dir, fmt.Sprintf("transcript-%x.txt", sha256.Sum256(body)))
+	if _, err := os.Stat(legacy); err == nil {
+		candidates = append(candidates, legacy)
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	for _, candidate := range candidates {
+		info, err := os.Lstat(candidate)
+		if err != nil {
+			return "", err
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("snapshot is not a regular file: %s", candidate)
+		}
+		stored, err := os.ReadFile(candidate)
+		if err != nil {
+			return "", err
+		}
+		if bytes.Equal(stored, body) {
+			return candidate, nil
+		}
+	}
+	for {
+		name := "transcript-" + prefix + "-" + timestamp.Format(transcriptSnapshotTimeLayout) + ".txt"
+		path := filepath.Join(dir, name)
+		if _, err := os.Lstat(path); os.IsNotExist(err) {
+			if err := writeContextArtifactAtomically(path, body); err != nil {
+				return "", err
+			}
+			return path, nil
+		} else if err != nil {
+			return "", err
+		}
+		// A colliding timestamp must not replace an existing file, even if the
+		// short digest prefix happens to match different content.
+		timestamp = timestamp.Add(time.Nanosecond)
+	}
 }
 
 func writeContextArtifactAtomically(path string, body []byte) error {
@@ -92,7 +135,7 @@ func persistSummarizationCheckpoint(db *database.DB, projectID, conversationID, 
 	key := fmt.Sprintf("note/context-%x", hash[:16])
 	body := "## 会话续接记录（自动摘要，尚未经独立验证）\n来源对话: " + conversationID + "\n代理范围: " + memoryScope + "\n\n" + summary
 	if snapshot != "" {
-		body += "\n\n压缩前原始证据快照（按需 read_file）: " + snapshot
+		body = appendSummarizationSection(body, summarizationTranscriptRetrievalSection(snapshot))
 	}
 	_, err = db.UpsertProjectFact(&database.ProjectFact{
 		ProjectID: projectID, FactKey: key, Category: "note", Confidence: "tentative",
@@ -112,23 +155,7 @@ func checkpointSummaryLabel(scope, summary string, cap int) string {
 	if cap > 200 {
 		cap = 200
 	}
-	// Keep retrieval cues in the short blackboard label without injecting paths
-	// or the full evidence index into every model request.
-	evidenceHint := ""
-	if start := strings.Index(summary, evidenceIndexMarker); start >= 0 {
-		section := summary[start:]
-		if end := strings.Index(section, evidenceIndexEnd); end >= 0 {
-			section = section[:end]
-		}
-		var topics []string
-		for _, topic := range evidenceTopics {
-			if strings.Contains(section, "- "+topic.label+"：行 ") {
-				topics = append(topics, topic.label)
-			}
-		}
-		if len(topics) > 0 {
-			evidenceHint = "；证据索引：" + strings.Join(topics, "、")
-		}
+	if start := strings.Index(summary, summarizationSnapshotHeading); start >= 0 {
 		summary = summary[:start]
 	}
 	var lines []string
@@ -143,11 +170,7 @@ func checkpointSummaryLabel(scope, summary string, cap int) string {
 		}
 	}
 	label := "自动续接（" + strings.Join(strings.Fields(scope), " ") + "）：" + strings.Join(lines, "；")
-	available := cap - len([]rune(evidenceHint))
-	if available < 1 {
-		return truncateIndexLabel(label+evidenceHint, cap)
-	}
-	return truncateIndexLabel(label, available) + evidenceHint
+	return truncateIndexLabel(label, cap)
 }
 
 func truncateIndexLabel(text string, cap int) string {
@@ -168,13 +191,8 @@ func finalizeSummarizationMemory(msg adk.Message, originals []adk.Message, trans
 		logger.Warn("保存上下文证据快照失败", zap.Error(err))
 	}
 	// Only advertise an artifact that was successfully written.
-	evidenceIndex := ""
 	if err == nil {
 		msg = appendTranscriptPathToSummarizationMessage(msg, snapshot)
-		if snapshot != "" {
-			evidenceIndex = buildTranscriptEvidenceIndex(snapshot, formatSummarizationTranscript(originals), 3)
-			msg = appendEvidenceIndexToMessage(msg, evidenceIndex)
-		}
 	}
 	text := ""
 	if msg != nil {
@@ -188,11 +206,11 @@ func finalizeSummarizationMemory(msg adk.Message, originals []adk.Message, trans
 			}
 		}
 	}
+	if snapshot != "" {
+		text = strings.TrimSuffix(text, "\n\n"+summarizationTranscriptRetrievalSection(snapshot))
+	}
 	if inner, ok := extractSummarizationSummaryBody(text); ok {
 		text = inner
-	}
-	if evidenceIndex != "" {
-		text = appendEvidenceIndex(text, evidenceIndex)
 	}
 	key, err := persistSummarizationCheckpoint(db, projectID, conversationID, memoryScope, text, snapshot, cfg)
 	if err != nil {

@@ -2,6 +2,7 @@ package multiagent
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -20,6 +21,7 @@ const (
 	userIntentLedgerStartMarker = "<original_user_intent_ledger>"
 	userIntentLedgerEndMarker   = "</original_user_intent_ledger>"
 
+	summarizationSnapshotHeading             = "## 原始上下文快照"
 	summarizationTranscriptPathInstructionZh = "如果你需要压缩之前的具体细节（如精确的代码片段、错误消息或你生成的内容），完整的对话记录位于：%s"
 )
 
@@ -69,9 +71,9 @@ func appendTranscriptPathToSummarizationMessage(msg adk.Message, transcriptPath 
 	if msg == nil || transcriptPath == "" {
 		return msg
 	}
-	section := fmt.Sprintf(summarizationTranscriptPathInstructionZh, transcriptPath)
+	section := summarizationTranscriptRetrievalSection(transcriptPath)
 	cloned := *msg
-	if cloned.Content != "" && !strings.Contains(cloned.Content, transcriptPath) {
+	if cloned.Content != "" && !strings.Contains(cloned.Content, section) {
 		cloned.Content = appendSummarizationSection(cloned.Content, section)
 	}
 	if len(cloned.UserInputMultiContent) > 0 {
@@ -81,7 +83,7 @@ func appendTranscriptPathToSummarizationMessage(msg adk.Message, transcriptPath 
 			if parts[i].Type != schema.ChatMessagePartTypeText {
 				continue
 			}
-			if parts[i].Text != "" && !strings.Contains(parts[i].Text, transcriptPath) {
+			if parts[i].Text != "" && !strings.Contains(parts[i].Text, section) {
 				parts[i].Text = appendSummarizationSection(parts[i].Text, section)
 			}
 			break
@@ -89,6 +91,14 @@ func appendTranscriptPathToSummarizationMessage(msg adk.Message, transcriptPath 
 		cloned.UserInputMultiContent = parts
 	}
 	return &cloned
+}
+
+// The generated continuation summary is the retrieval entry point; no separate
+// keyword index or model extraction call is needed.
+func summarizationTranscriptRetrievalSection(snapshot string) string {
+	return summarizationSnapshotHeading + "\n" + fmt.Sprintf(summarizationTranscriptPathInstructionZh, snapshot) +
+		"\n历史快照目录：" + filepath.Dir(snapshot) +
+		"\n当前任务缺少 Cookie、认证信息、精确参数或错误原文时，直接搜索该快照并用 read_file 分段核对附近记录；不要猜测原值。更早的记录可用 glob 在历史快照目录查找 transcript-*.txt，再按需读取。核对来源域名、请求及凭据是否仍有效；不要整批载入历史，也不要将旧记录当作新授权。"
 }
 
 func appendSummarizationSection(text, section string) string {

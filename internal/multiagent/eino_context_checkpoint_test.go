@@ -187,6 +187,10 @@ func TestSummarizationMiddlewaresAutomaticallySaveCheckpoint(t *testing.T) {
 			if !strings.Contains(joined, facts[0].FactKey) || strings.Contains(joined, "（暂无事实）") {
 				t.Fatalf("live index did not refresh after save: %s", joined)
 			}
+			snapshots, err := filepath.Glob(filepath.Join(filepath.Dir(cfg.Database.Path), "conversation_artifacts", cid, "summarization", "snapshots", "*.txt"))
+			if err != nil || len(snapshots) != 1 {
+				t.Fatalf("one compaction should reuse one original transcript across preflight/finalize/callback: %v %v", snapshots, err)
+			}
 		})
 	}
 }

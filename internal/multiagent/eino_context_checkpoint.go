@@ -29,12 +29,27 @@ func writeSummarizationTranscriptSnapshot(path string, msgs []adk.Message) (stri
 	}
 	digest := sha256.Sum256(body)
 	snapshot := filepath.Join(dir, fmt.Sprintf("transcript-%x.txt", digest))
-	if _, err := os.Stat(snapshot); os.IsNotExist(err) {
+	if info, err := os.Stat(snapshot); os.IsNotExist(err) {
 		if err := writeContextArtifactAtomically(snapshot, body); err != nil {
 			return "", err
 		}
 	} else if err != nil {
 		return "", err
+	} else if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("snapshot is not a regular file: %s", snapshot)
+	}
+	// One immutable companion per snapshot avoids a shared mutable catalog and
+	// keeps discovery scoped to this conversation/agent, including concurrent runs.
+	indexPath := snapshot + ".index.md"
+	if info, err := os.Stat(indexPath); os.IsNotExist(err) {
+		index := buildTranscriptEvidenceIndex(snapshot, string(body), 32)
+		if err := writeContextArtifactAtomically(indexPath, []byte(index)); err != nil {
+			return "", err
+		}
+	} else if err != nil {
+		return "", err
+	} else if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("evidence index is not a regular file: %s", indexPath)
 	}
 	if err := writeContextArtifactAtomically(path, body); err != nil {
 		return "", err
@@ -97,6 +112,25 @@ func checkpointSummaryLabel(scope, summary string, cap int) string {
 	if cap > 200 {
 		cap = 200
 	}
+	// Keep retrieval cues in the short blackboard label without injecting paths
+	// or the full evidence index into every model request.
+	evidenceHint := ""
+	if start := strings.Index(summary, evidenceIndexMarker); start >= 0 {
+		section := summary[start:]
+		if end := strings.Index(section, evidenceIndexEnd); end >= 0 {
+			section = section[:end]
+		}
+		var topics []string
+		for _, topic := range evidenceTopics {
+			if strings.Contains(section, "- "+topic.label+"：行 ") {
+				topics = append(topics, topic.label)
+			}
+		}
+		if len(topics) > 0 {
+			evidenceHint = "；证据索引：" + strings.Join(topics, "、")
+		}
+		summary = summary[:start]
+	}
 	var lines []string
 	for _, line := range strings.Split(summary, "\n") {
 		line = strings.TrimSpace(line)
@@ -109,11 +143,22 @@ func checkpointSummaryLabel(scope, summary string, cap int) string {
 		}
 	}
 	label := "自动续接（" + strings.Join(strings.Fields(scope), " ") + "）：" + strings.Join(lines, "；")
-	runes := []rune(label)
+	available := cap - len([]rune(evidenceHint))
+	if available < 1 {
+		return truncateIndexLabel(label+evidenceHint, cap)
+	}
+	return truncateIndexLabel(label, available) + evidenceHint
+}
+
+func truncateIndexLabel(text string, cap int) string {
+	if cap < 1 {
+		return ""
+	}
+	runes := []rune(text)
 	if len(runes) > cap {
 		return string(runes[:cap-1]) + "…"
 	}
-	return label
+	return text
 }
 
 func finalizeSummarizationMemory(msg adk.Message, originals []adk.Message, transcriptPath string, db *database.DB, projectID, conversationID, memoryScope string, cfg config.ProjectConfig, logger *zap.Logger) adk.Message {
@@ -123,8 +168,13 @@ func finalizeSummarizationMemory(msg adk.Message, originals []adk.Message, trans
 		logger.Warn("保存上下文证据快照失败", zap.Error(err))
 	}
 	// Only advertise an artifact that was successfully written.
+	evidenceIndex := ""
 	if err == nil {
 		msg = appendTranscriptPathToSummarizationMessage(msg, snapshot)
+		if snapshot != "" {
+			evidenceIndex = buildTranscriptEvidenceIndex(snapshot, formatSummarizationTranscript(originals), 3)
+			msg = appendEvidenceIndexToMessage(msg, evidenceIndex)
+		}
 	}
 	text := ""
 	if msg != nil {
@@ -140,6 +190,9 @@ func finalizeSummarizationMemory(msg adk.Message, originals []adk.Message, trans
 	}
 	if inner, ok := extractSummarizationSummaryBody(text); ok {
 		text = inner
+	}
+	if evidenceIndex != "" {
+		text = appendEvidenceIndex(text, evidenceIndex)
 	}
 	key, err := persistSummarizationCheckpoint(db, projectID, conversationID, memoryScope, text, snapshot, cfg)
 	if err != nil {

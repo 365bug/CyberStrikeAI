@@ -17,6 +17,7 @@ var DASHBOARD_SEVERITY_STATUS_FILTER_STORAGE_KEY = 'cyberstrike.dashboard.severi
 var DASHBOARD_SEVERITY_STATUS_FILTER_VALUES = ['', 'open', 'confirmed', 'fixed', 'ignored', 'false_positive'];
 
 var dashboardState = {
+    tokenDays: 7,
     currentController: null,    // 当前正在进行的 fetch 的 AbortController
     pollTimer: null,            // 自动轮询的 setInterval id
     staleTimer: null,           // 过期检查的 setInterval id
@@ -162,7 +163,7 @@ async function refreshDashboard() {
             fetchJson(dashboardProjectScopedUrl('/api/c2/tasks?page=1&page_size=1')),
             fetchJson('/api/projects/dashboard-summary?fact_limit=10'),
             selectedSeverityStatus ? fetchJson('/api/vulnerabilities/stats?status=' + encodeURIComponent(selectedSeverityStatus)) : Promise.resolve(null),
-            fetchJson(dashboardProjectScopedUrl('/api/usage/tokens?days=7&limit=5'))
+            fetchJson(dashboardProjectScopedUrl('/api/usage/tokens?days=' + dashboardState.tokenDays + '&limit=20'))
         ]);
 
         // 如果在 await 期间 controller 已被 abort，说明又有新刷新启动了，丢弃本次结果
@@ -440,6 +441,7 @@ async function refreshDashboard() {
         setDashboardOverviewPlaceholder('-');
         setEl('dashboard-kpi-success-rate', '-');
         setEl('dashboard-kpi-tools-calls', '-');
+        renderDashboardTokenAnalysis(null);
         setEl('dashboard-kpi-token-usage', '-');
         setKpiSubText('dashboard-kpi-tasks-sub-text', '-');
         setKpiSubText('dashboard-kpi-vuln-sub-text', '-');
@@ -708,6 +710,7 @@ function setKpiRateBadge(id, rate, failedCount) {
 }
 
 function renderDashboardTokenUsage(res) {
+    renderDashboardTokenAnalysis(res);
     const summary = res && res.summary ? res.summary : null;
     if (!summary) {
         setEl('dashboard-kpi-token-usage', '-');
@@ -725,9 +728,10 @@ function renderDashboardTokenUsage(res) {
     setEl('dashboard-kpi-token-usage', formatTokenUsageCompact(total));
     setKpiSubText('dashboard-kpi-token-sub-text',
         dt('dashboard.tokenUsageSub', {
+            days: dashboardState.tokenDays,
             today: formatTokenUsageCompact(today),
             calls: Number.isFinite(calls) ? calls : 0
-        }, '近 7 天 ' + (Number.isFinite(calls) ? calls : 0) + ' 次调用 · 今日 ' + formatTokenUsageCompact(today)));
+        }, '近 ' + dashboardState.tokenDays + ' 天 ' + (Number.isFinite(calls) ? calls : 0) + ' 次调用 · 今日 ' + formatTokenUsageCompact(today)));
 }
 
 function formatTokenUsageCompact(num) {
@@ -2524,3 +2528,136 @@ document.addEventListener('click', function (ev) {
     var banner = document.getElementById('dashboard-alert-banner');
     if (banner) banner.hidden = true;
 });
+
+function openDashboardTokenUsage() {
+    const panel = document.getElementById('dashboard-token-details');
+    if (!panel) return;
+    panel.open = true;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function changeDashboardTokenPeriod(value) {
+    const days = Number(value);
+    if (![7, 30, 90].includes(days)) return;
+    dashboardState.tokenDays = days;
+    const host = document.getElementById('dashboard-token-analysis');
+    if (host) host.textContent = '…';
+    refreshDashboard();
+}
+
+function dashboardUsageCount(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
+function dashboardUsageMetrics(summary) {
+    const input = dashboardUsageCount(summary.promptTokens);
+    const cached = dashboardUsageCount(summary.cachedTokens);
+    return [
+        ['usageTotal', summary.totalTokens],
+        ['usageInput', input],
+        ['usageOutput', summary.completionTokens],
+        ['usageCacheRead', cached],
+        ['usageCacheWrite', summary.cacheWriteTokens],
+        ['usageReasoning', summary.reasoningTokens],
+        ['usageCalls', summary.modelCalls],
+        ['usageCacheRate', input > 0 ? (Math.min(cached, input) / input * 100).toFixed(1) + '%' : '—']
+    ];
+}
+
+function renderDashboardTokenAnalysis(res) {
+    const host = document.getElementById('dashboard-token-analysis');
+    if (!host) return;
+    host.replaceChildren();
+    if (!res || !res.summary) {
+        host.textContent = dt('dashboard.usageUnavailable', null, '用量统计暂不可用');
+        return;
+    }
+    const exact = value => dashboardUsageCount(value).toLocaleString(window.__locale || 'zh-CN');
+    const label = key => dt('dashboard.' + key, null, key);
+    const metrics = document.createElement('div');
+    metrics.className = 'token-usage-metrics';
+    dashboardUsageMetrics(res.summary).forEach(([key, value]) => {
+        const card = document.createElement('div');
+        const title = document.createElement('span');
+        title.textContent = label(key);
+        const count = document.createElement('strong');
+        count.textContent = typeof value === 'string' ? value : exact(value);
+        card.append(title, count);
+        metrics.append(card);
+    });
+    host.append(metrics);
+    if (!dashboardUsageCount(res.summary.events)) {
+        const empty = document.createElement('p');
+        empty.textContent = dt('dashboard.noTokenUsageYet', null, '暂无用量');
+        host.append(empty);
+        return;
+    }
+    // Tables use text nodes: provider model names and conversation IDs are untrusted.
+    const table = (titleKey, headings, rows) => {
+        const section = document.createElement('section');
+        const title = document.createElement('h4');
+        title.textContent = label(titleKey);
+        const wrap = document.createElement('div');
+        wrap.className = 'token-usage-table-wrap';
+        const grid = document.createElement('table');
+        const caption = document.createElement('caption');
+        caption.className = 'sr-only';
+        caption.textContent = title.textContent;
+        const head = document.createElement('thead');
+        const hr = document.createElement('tr');
+        headings.forEach(key => {
+            const th = document.createElement('th');
+            th.scope = 'col';
+            th.textContent = label(key);
+            hr.append(th);
+        });
+        head.append(hr);
+        const body = document.createElement('tbody');
+        rows.forEach(values => {
+            const tr = document.createElement('tr');
+            values.forEach(value => {
+                const td = document.createElement('td');
+                td.textContent = String(value == null ? '' : value);
+                tr.append(td);
+            });
+            body.append(tr);
+        });
+        grid.append(caption, head, body);
+        wrap.append(grid);
+        section.append(title, wrap);
+        host.append(section);
+    };
+    const counts = row => [exact(row.promptTokens), exact(row.completionTokens), exact(row.cachedTokens),
+        exact(row.cacheWriteTokens), exact(row.reasoningTokens), exact(row.totalTokens), exact(row.modelCalls)];
+    const fields = ['usageInput', 'usageOutput', 'usageCacheRead', 'usageCacheWrite', 'usageReasoning', 'usageTotal', 'usageCalls'];
+    table('usageByModel', ['usageModel', 'usageShare', ...fields], (res.byModel || []).map(row => [row.label || row.key,
+        dashboardUsageCount(res.summary.totalTokens) > 0 ? (dashboardUsageCount(row.totalTokens) / dashboardUsageCount(res.summary.totalTokens) * 100).toFixed(1) + '%' : '—', ...counts(row)]));
+    const trendTitle = document.createElement('h4');
+    trendTitle.textContent = label('usageTrend');
+    const trend = document.createElement('div');
+    trend.className = 'token-usage-trend';
+    const days = (res.byDay || []).slice().reverse();
+    const peak = Math.max(1, ...days.map(row => dashboardUsageCount(row.totalTokens)));
+    days.forEach(row => {
+        const bar = document.createElement('div');
+        bar.className = 'token-usage-day';
+        const count = document.createElement('span');
+        count.textContent = formatTokenUsageCompact(row.totalTokens);
+        const fill = document.createElement('div');
+        fill.className = 'token-usage-day-bar';
+        fill.style.height = Math.max(1, dashboardUsageCount(row.totalTokens) / peak * 90) + 'px';
+        const date = document.createElement('span');
+        date.textContent = String(row.key || '').slice(5);
+        bar.title = row.key + ': ' + exact(row.totalTokens);
+        bar.append(count, fill, date);
+        trend.append(bar);
+    });
+    host.append(trendTitle, trend);
+    table('usageByDay', ['usageDate', ...fields], (res.byDay || []).map(row => [row.key, ...counts(row)]));
+    table('usageRecent', ['usageTime', 'usageModel', 'usageStatus', 'usageTotal', 'usageCalls'], (res.recent || []).map(row => {
+        const time = new Date(row.createdAt);
+        return [Number.isFinite(time.getTime()) ? time.toLocaleString(window.__locale || 'zh-CN') : '—',
+            row.model || '—', row.reason === 'final' ? label('usageFinal') : row.reason === 'partial' ? label('usagePartial') : (row.reason || '—'), exact(row.totalTokens), exact(row.modelCalls)];
+    }));
+}

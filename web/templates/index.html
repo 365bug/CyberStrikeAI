@@ -556,7 +556,7 @@
                                         <span class="dashboard-kpi-sub-text" id="dashboard-kpi-rate-sub-text" data-i18n="dashboard.healthyStatus">运行平稳</span>
                                     </div>
                                 </div>
-                                <div class="dashboard-kpi-card" role="button" tabindex="0" onclick="switchPage('chat')" onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); switchPage('chat'); }" data-i18n="dashboard.clickToViewChat" data-i18n-attr="title" title="点击查看对话">
+                                <div class="dashboard-kpi-card" role="button" tabindex="0" onclick="openDashboardTokenUsage()" onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); openDashboardTokenUsage(); }" data-i18n="dashboard.usageView" data-i18n-attr="title" title="查看用量详情">
                                     <div class="dashboard-kpi-head">
                                         <div class="dashboard-kpi-label" data-i18n="dashboard.tokenUsage">Token 用量</div>
                                         <span class="dashboard-kpi-icon dashboard-kpi-icon-tokens" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><path d="M8 3 6 21"/><path d="m18 3-2 18"/></svg></span>
@@ -567,6 +567,19 @@
                                     </div>
                                 </div>
                             </div>
+                            <details class="dashboard-section token-usage-panel" id="dashboard-token-details">
+                                <summary class="dashboard-section-title" data-i18n="dashboard.usageView">查看用量详情</summary>
+                                <div class="token-usage-toolbar">
+                                    <label for="dashboard-token-days" data-i18n="dashboard.usagePeriod">统计周期</label>
+                                    <select id="dashboard-token-days" onchange="changeDashboardTokenPeriod(this.value)">
+                                        <option value="7" data-i18n="dashboard.usage7Days">近 7 天</option>
+                                        <option value="30" data-i18n="dashboard.usage30Days">近 30 天</option>
+                                        <option value="90" data-i18n="dashboard.usage90Days">近 90 天</option>
+                                    </select>
+                                </div>
+                                <p class="token-usage-note" data-i18n="dashboard.usageScope">统计已记录的 Agent 运行中模型返回的用量，包括子 Agent。缓存读取和写入属于输入，推理属于输出，不重复加入总量。未返回或未采集的用量不在统计内；这不是供应商账单。模型按运行配置归类，切换模型的运行可能混合用量。</p>
+                                <div id="dashboard-token-analysis" aria-live="polite"></div>
+                            </details>
                             <!-- 两列主内容区 -->
                             <div class="dashboard-grid">
                                 <div class="dashboard-main">
@@ -6996,10 +7009,10 @@
     <script src="/static/js/info-collect.js?v=20260717-1"></script>
     <script src="/static/js/assets.js?v=20260717-7"></script>
     <script src="/static/js/agents.js"></script>
-    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/dashboard.js?v=20261011-token-usage"></script>
     <script src="/static/js/chat-scroll.js?v=20260815-1"></script>
-    <script src="/static/js/monitor.js?v=20260907-blocked-1"></script>
-    <script src="/static/js/chat.js?v=20261009-retest-1"></script>
+    <script src="/static/js/monitor.js?v=20261011-token-usage"></script>
+    <script src="/static/js/chat.js?v=20261011-token-usage"></script>
     <script src="/static/js/chat-plan-progress.js?v=20260815-1"></script>
     <script src="/static/js/hitl.js?v=20260819-1"></script>
     <script src="/static/js/tool-guard.js?v=20261010-conflict"></script>
@@ -7016,7 +7029,7 @@
     <script src="/static/js/fact-graph.js"></script>
     <script src="/static/js/projects.js?v=20260819-1"></script>
     <script src="/static/js/vulnerability.js?v=20261010-retest-2"></script>
-    <script src="/static/js/webshell.js?v=20260907-blocked-1"></script>
+    <script src="/static/js/webshell.js?v=20261011-token-usage"></script>
     <script src="/static/js/chat-files.js"></script>
     <script src="/static/js/tasks.js"></script>
     <script src="/static/js/workflow-package-client.js"></script>

@@ -42,6 +42,17 @@ test('cache hit ratio uses input tokens, clamps invalid detail and handles missi
     assert.equal(ctx.tokenUsageCacheRate(null), '—');
 });
 
+test('daily trends retain server day keys and fill only gaps within returned history', () => {
+    const ctx = harness();
+    const rows = ctx.tokenUsageTimeline([{ key: '2026-10-12', totalTokens: 12 }, { key: '2026-10-10', totalTokens: 10 }, { key: 'invalid', totalTokens: 20 }]);
+    assert.deepEqual(Array.from(rows, row => row.key), ['2026-10-10', '2026-10-11', '2026-10-12']);
+    assert.equal(rows[1].totalTokens, 0);
+    assert.equal(rows[1].events, 0);
+    assert.equal(rows[2].totalTokens, 12);
+    assert.equal(ctx.tokenUsageTimeline([]).length, 0);
+    assert.equal(ctx.tokenUsageTimeline([{ key: '2026-10-10', totalTokens: 10 }]).length, 1);
+});
+
 test('detail requests stay project scoped and discard late results after a period change', async () => {
     const ctx = harness();
     const host = { setAttribute() {}, removeAttribute() {}, textContent: '' };
@@ -74,6 +85,7 @@ test('all supported languages expose usage labels and interpolation placeholders
         const data = JSON.parse(fs.readFileSync(`web/static/i18n/${locale}.json`, 'utf8'));
         for (const key of ['usageView', 'usageScope', 'usageCacheRead', 'usageCacheWrite', 'usageTrend', 'usageCacheHitRate']) assert.ok(data.dashboard[key]);
         assert.ok(data.settings.nav.tokenUsage);
+        for (const key of ['subtitle', 'scopeNote', 'trendMetric', 'cacheComposition', 'cacheHit', 'uncachedInput', 'cacheNote', 'scopeProject', 'scopeAccessible', 'noDailyData']) assert.ok(data.tokenUsageUI[key]);
         assert.match(data.dashboard.usageCacheHitRate, /\{\{rate\}\}/);
         assert.match(data.dashboard.tokenUsageSub, /\{\{rate\}\}/);
         assert.match(data.chat.turnTokenUsageTitle, /\{\{cacheWrite\}\}/);

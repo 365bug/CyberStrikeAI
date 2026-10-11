@@ -277,6 +277,19 @@
     "capabilities": "Capabilities",
     "administration": "Administration"
   },
+  "tokenUsageUI": {
+    "chartHint": "Hover or focus a bar for exact usage",
+    "scopeProject": "Current project",
+    "scopeAccessible": "Accessible conversations",
+    "subtitle": "Explore model consumption, caching and usage trends",
+    "scopeNote": "Scope and counting rules",
+    "trendMetric": "Trend metric",
+    "noDailyData": "No daily usage records",
+    "cacheComposition": "Input cache breakdown",
+    "cacheHit": "Cache hit rate",
+    "uncachedInput": "Input without cache reads",
+    "cacheNote": "Cache reads are part of input, not added to the total again. Cache writes are listed separately."
+  },
   "dashboard": {
     "title": "Dashboard",
     "refresh": "Refresh",

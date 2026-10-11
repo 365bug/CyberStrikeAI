@@ -39,7 +39,7 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20261011-token-settings-compact">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261012-token-analytics">
     <link rel="stylesheet" href="/static/css/tool-guard.css?v=20260907-7">
     <link rel="stylesheet" href="/static/css/chat-plan-progress.css?v=20260813-4">
     <link rel="stylesheet" href="/static/css/c2.css">
@@ -3642,8 +3642,8 @@
                         <div class="settings-content">
                             <div id="settings-section-token-usage" class="settings-section-content token-usage-panel">
                                 <div class="settings-section-header token-usage-header">
-                                    <h3 data-i18n="settings.nav.tokenUsage">Token 用量</h3>
-                                    <button type="button" class="btn-secondary" onclick="refreshTokenUsage()" data-i18n="common.refresh">刷新</button>
+                                    <div><h3 data-i18n="settings.nav.tokenUsage">Token 用量</h3><p class="token-usage-subtitle" data-i18n="tokenUsageUI.subtitle">查看模型消耗、缓存利用与使用趋势</p></div>
+                                    <button id="settings-token-refresh" type="button" class="btn-secondary" onclick="refreshTokenUsage()" data-i18n="common.refresh">刷新</button>
                                 </div>
                                 <div class="token-usage-toolbar">
                                     <label for="settings-token-days" data-i18n="dashboard.usagePeriod">统计周期</label>
@@ -3652,8 +3652,9 @@
                                         <option value="30" data-i18n="dashboard.usage30Days">近 30 天</option>
                                         <option value="90" data-i18n="dashboard.usage90Days">近 90 天</option>
                                     </select>
+                                    <span id="settings-token-scope" class="token-usage-scope"></span>
                                 </div>
-                                <p class="token-usage-note" data-i18n="dashboard.usageScope">统计已记录的 Agent 运行中模型返回的用量，包括子 Agent。缓存读取和写入属于输入，推理属于输出，不重复加入总量。未返回或未采集的用量不在统计内；这不是供应商账单。模型按运行配置归类，切换模型的运行可能混合用量。</p>
+                                <details class="token-usage-note"><summary data-i18n="tokenUsageUI.scopeNote">统计口径与说明</summary><p data-i18n="dashboard.usageScope">统计已记录的 Agent 运行中模型返回的用量，包括子 Agent。缓存读取和写入属于输入，推理属于输出，不重复加入总量。未返回或未采集的用量不在统计内；这不是供应商账单。模型按运行配置归类，切换模型的运行可能混合用量。</p></details>
                                 <div id="settings-token-analysis" aria-live="polite"></div>
                             </div>
 
@@ -7023,7 +7024,7 @@
     <script src="/static/js/chat-plan-progress.js?v=20260815-1"></script>
     <script src="/static/js/hitl.js?v=20260819-1"></script>
     <script src="/static/js/tool-guard.js?v=20261010-conflict"></script>
-    <script src="/static/js/token-usage.js?v=20261011-token-settings"></script>
+    <script src="/static/js/token-usage.js?v=20261012-token-analytics"></script>
     <script src="/static/js/settings.js?v=20261011-token-settings"></script>
     <script src="/static/js/audit-datetime-picker.js"></script>
     <script src="/static/js/audit.js"></script>

@@ -277,6 +277,19 @@
     "capabilities": "能力中心",
     "administration": "平台管理"
   },
+  "tokenUsageUI": {
+    "chartHint": "悬停或聚焦柱形查看精确用量",
+    "scopeProject": "当前项目",
+    "scopeAccessible": "可访问会话",
+    "subtitle": "查看模型消耗、缓存利用与使用趋势",
+    "scopeNote": "统计口径与说明",
+    "trendMetric": "趋势指标",
+    "noDailyData": "暂无每日用量记录",
+    "cacheComposition": "输入缓存构成",
+    "cacheHit": "缓存命中率",
+    "uncachedInput": "未命中缓存的输入",
+    "cacheNote": "缓存读取是输入的一部分，不重复计入总量。缓存写入单独列示。"
+  },
   "dashboard": {
     "title": "仪表盘",
     "refresh": "刷新",

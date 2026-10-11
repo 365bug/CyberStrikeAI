@@ -288,7 +288,7 @@
     "successRate": "Успешность инструментов",
     "tokenUsage": "Расход токенов",
     "usageCacheHitRate": "Попадания в кэш {{rate}}",
-    "tokenUsageSub": "Сегодня {{today}} · Кэш {{rate}}",
+    "tokenUsageSub": "Кэш {{rate}}",
     "noTokenUsageYet": "Расхода пока нет",
     "clickToViewTasks": "Открыть задачи",
     "clickToViewChat": "Открыть диалоги",

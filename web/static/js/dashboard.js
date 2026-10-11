@@ -717,7 +717,6 @@ function renderDashboardTokenUsage(res) {
     }
     const cacheRate = tokenUsageCacheRate(summary);
     const total = Number(summary.totalTokens || 0);
-    const today = res && res.today ? Number(res.today.totalTokens || 0) : 0;
     if (!Number.isFinite(total) || total <= 0) {
         setEl('dashboard-kpi-token-usage', '0');
         setKpiSubText('dashboard-kpi-token-sub-text', dt('dashboard.noTokenUsageYet', null, '暂无用量'));
@@ -726,9 +725,8 @@ function renderDashboardTokenUsage(res) {
     setEl('dashboard-kpi-token-usage', formatTokenUsageCompact(total));
     setKpiSubText('dashboard-kpi-token-sub-text',
         dt('dashboard.tokenUsageSub', {
-            today: formatTokenUsageCompact(today),
             rate: cacheRate
-        }, '今日 ' + formatTokenUsageCompact(today) + ' · 缓存命中 ' + cacheRate));
+        }, '缓存命中 ' + cacheRate));
 }
 
 function formatTokenUsageCompact(num) {

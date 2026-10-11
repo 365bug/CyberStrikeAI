@@ -287,6 +287,7 @@
     "toolCalls": "Tool invocations",
     "successRate": "Tool success rate",
     "tokenUsage": "Token usage",
+    "usageCacheHitRate": "Cache hit {{rate}}",
     "tokenUsageSub": "Last {{days}} days: {{calls}} calls · Today {{today}}",
     "noTokenUsageYet": "No usage yet",
     "clickToViewTasks": "Click to view tasks",
@@ -1969,6 +1970,7 @@
   "settings": {
     "title": "System settings",
     "nav": {
+      "tokenUsage": "Token usage",
       "basic": "Basic",
       "hitl": "Human-in-the-loop",
       "knowledge": "Knowledge base",

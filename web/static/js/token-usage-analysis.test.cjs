@@ -2,41 +2,79 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const source = fs.readFileSync('web/static/js/dashboard.js', 'utf8');
+const source = fs.readFileSync('web/static/js/token-usage.js', 'utf8');
 const harness = () => {
-    const context = { document: {}, dashboardState: { tokenDays: 7 }, refreshDashboard() {} };
+    const context = { document: { addEventListener() {} }, window: {}, AbortController };
     vm.createContext(context);
-    vm.runInContext(source.slice(source.indexOf('function openDashboardTokenUsage()')), context);
+    vm.runInContext(source, context);
     return context;
 };
 
 test('cache and reasoning details do not inflate total or double-count input', () => {
     const ctx = harness();
-    const metrics = ctx.dashboardUsageMetrics({ totalTokens: 120, promptTokens: 100, completionTokens: 20, cachedTokens: 40, cacheWriteTokens: 30, reasoningTokens: 10, modelCalls: 1 });
+    const metrics = ctx.tokenUsageMetrics({ totalTokens: 120, promptTokens: 100, completionTokens: 20, cachedTokens: 40, cacheWriteTokens: 30, reasoningTokens: 10, modelCalls: 1 });
     const values = Object.fromEntries(metrics);
     assert.equal(values.usageTotal, 120);
     assert.equal(values.usageCacheWrite, 30);
     assert.equal(values.usageCacheRate, '40.0%');
-    assert.equal(Object.fromEntries(ctx.dashboardUsageMetrics({})).usageCacheRate, '—');
-    assert.equal(ctx.dashboardUsageCount(Infinity), 0);
-    assert.equal(ctx.dashboardUsageCount(-12), 0);
+    assert.equal(Object.fromEntries(ctx.tokenUsageMetrics({})).usageCacheRate, '—');
+    assert.equal(ctx.tokenUsageCount(Infinity), 0);
+    assert.equal(ctx.tokenUsageCount(-12), 0);
 });
 
 test('period selection refreshes once and rejects arbitrary periods', () => {
     const ctx = harness();
     let calls = 0;
-    ctx.refreshDashboard = () => { calls++; };
+    ctx.refreshTokenUsage = () => { calls++; };
     ctx.document.getElementById = () => ({ textContent: '' });
-    ctx.changeDashboardTokenPeriod('30');
-    ctx.changeDashboardTokenPeriod('999');
-    assert.equal(ctx.dashboardState.tokenDays, 30);
+    ctx.changeTokenUsagePeriod('30');
+    ctx.changeTokenUsagePeriod('999');
+    assert.equal(ctx.tokenUsageState.days, 30);
     assert.equal(calls, 1);
+});
+
+test('cache hit ratio uses input tokens, clamps invalid detail and handles missing input', () => {
+    const ctx = harness();
+    assert.equal(ctx.tokenUsageCacheRate({ promptTokens: 1000, cachedTokens: 930, totalTokens: 1100 }), '93.0%');
+    assert.equal(ctx.tokenUsageCacheRate({ promptTokens: 1000, cachedTokens: 0 }), '0.0%');
+    assert.equal(ctx.tokenUsageCacheRate({ promptTokens: 10, cachedTokens: 30 }), '100.0%');
+    assert.equal(ctx.tokenUsageCacheRate({ promptTokens: 0, cachedTokens: 30 }), '—');
+    assert.equal(ctx.tokenUsageCacheRate(null), '—');
+});
+
+test('detail requests stay project scoped and discard late results after a period change', async () => {
+    const ctx = harness();
+    const host = { setAttribute() {}, removeAttribute() {}, textContent: '' };
+    ctx.document.getElementById = id => id === 'settings-token-analysis' ? host : null;
+    ctx.getActiveProjectId = () => 'project / sample';
+    const requests = [];
+    ctx.apiFetch = (url, options) => new Promise(resolve => requests.push({ url, options, resolve }));
+    const rendered = [];
+    ctx.renderTokenUsageAnalysis = value => rendered.push(value);
+    const first = ctx.refreshTokenUsage();
+    ctx.tokenUsageState.days = 30;
+    const second = ctx.refreshTokenUsage();
+    assert.ok(requests[0].options.signal.aborted);
+    assert.match(requests[1].url, /days=30.*project_id=project%20%2F%20sample/);
+    requests[1].resolve({ ok: true, json: async () => ({ summary: { totalTokens: 30 } }) });
+    await second;
+    requests[0].resolve({ ok: true, json: async () => ({ summary: { totalTokens: 7 } }) });
+    await first;
+    assert.equal(rendered.length, 1);
+    assert.equal(rendered[0].summary.totalTokens, 30);
+    const pending = ctx.refreshTokenUsage();
+    ctx.stopTokenUsageRequests();
+    requests[2].resolve({ ok: true, json: async () => ({ summary: { totalTokens: 90 } }) });
+    await pending;
+    assert.equal(rendered.length, 1, 'leaving the section must invalidate outstanding results');
 });
 
 test('all supported languages expose usage labels and interpolation placeholders', () => {
     for (const locale of ['zh-CN', 'en-US', 'ru-RU']) {
         const data = JSON.parse(fs.readFileSync(`web/static/i18n/${locale}.json`, 'utf8'));
-        for (const key of ['usageView', 'usageScope', 'usageCacheRead', 'usageCacheWrite', 'usageTrend']) assert.ok(data.dashboard[key]);
+        for (const key of ['usageView', 'usageScope', 'usageCacheRead', 'usageCacheWrite', 'usageTrend', 'usageCacheHitRate']) assert.ok(data.dashboard[key]);
+        assert.ok(data.settings.nav.tokenUsage);
+        assert.match(data.dashboard.usageCacheHitRate, /\{\{rate\}\}/);
         assert.match(data.dashboard.tokenUsageSub, /\{\{days\}\}/);
         assert.match(data.chat.turnTokenUsageTitle, /\{\{cacheWrite\}\}/);
     }

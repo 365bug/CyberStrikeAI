@@ -287,6 +287,7 @@
     "toolCalls": "工具调用次数",
     "successRate": "工具执行成功率",
     "tokenUsage": "Token 用量",
+    "usageCacheHitRate": "缓存命中 {{rate}}",
     "tokenUsageSub": "近 {{days}} 天 {{calls}} 次调用 · 今日 {{today}}",
     "noTokenUsageYet": "暂无用量",
     "clickToViewTasks": "点击查看任务管理",
@@ -1957,6 +1958,7 @@
   "settings": {
     "title": "系统设置",
     "nav": {
+      "tokenUsage": "Token 用量",
       "basic": "基本设置",
       "hitl": "人机协同",
       "knowledge": "知识库",

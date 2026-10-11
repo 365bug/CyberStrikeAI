@@ -287,6 +287,7 @@
     "toolCalls": "Вызовы инструментов",
     "successRate": "Успешность инструментов",
     "tokenUsage": "Расход токенов",
+    "usageCacheHitRate": "Попадания в кэш {{rate}}",
     "tokenUsageSub": "За {{days}} дней {{calls}} вызовов · сегодня {{today}}",
     "noTokenUsageYet": "Расхода пока нет",
     "clickToViewTasks": "Открыть задачи",
@@ -1982,6 +1983,7 @@
   "settings": {
     "title": "Системные настройки",
     "nav": {
+      "tokenUsage": "Расход токенов",
       "basic": "Основные",
       "hitl": "Человек в контуре",
       "knowledge": "База знаний",

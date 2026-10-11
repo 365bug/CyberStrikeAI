@@ -47221,9 +47221,12 @@ html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
 }
 
 /* Provider-reported token analysis, scoped by the dashboard project selector. */
+.dashboard-kpi-sub--tokens { row-gap: 2px; }
+#dashboard-kpi-token-cache-text { flex-basis: 100%; }
 .token-usage-panel { margin-bottom: 20px; padding: 18px 22px; }
-.token-usage-panel > summary { cursor: pointer; }
+.token-usage-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .token-usage-toolbar { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+.token-usage-toolbar label { white-space: nowrap; }
 .token-usage-toolbar select { padding: 6px 10px; border: 1px solid var(--border-color, #dce2ea); border-radius: 6px; background: var(--bg-secondary, #fff); color: inherit; }
 .token-usage-note { opacity: .72; font-size: 12px; line-height: 1.7; margin: 14px 0; }
 .token-usage-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }

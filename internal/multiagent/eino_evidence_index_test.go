@@ -1,10 +1,14 @@
 package multiagent
 
 import (
+	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"cyberstrike-ai/internal/config"
@@ -58,6 +62,90 @@ func TestEvidenceIndexLocatesSerializedEvidenceWithoutRepeatingSecrets(t *testin
 	files, _ := filepath.Glob(filepath.Join(filepath.Dir(snapshot), "*.index.md"))
 	if len(files) != 1 {
 		t.Fatalf("retry duplicated indexes: %v", files)
+	}
+}
+
+func TestFailedTranscriptWriteDoesNotLeaveFrameworkAliasHint(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		t.Run(fmt.Sprintf("native=%v", native), func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Database.Path = filepath.Join(t.TempDir(), "runtime.db")
+			cfg.OpenAI.Model = "gpt-4o"
+			cfg.OpenAI.MaxTotalTokens = 5000
+			emit := false
+			mwCfg := &config.MultiAgentEinoMiddlewareConfig{SummarizationEmitInternalEvents: &emit, SummarizationOutputReserveTokens: 1024}
+			ctx := context.Background()
+			base := filepath.Join(filepath.Dir(cfg.Database.Path), "conversation_artifacts", "failure", "summarization")
+			if err := os.MkdirAll(base, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			// Make snapshot creation fail while the middleware can still create its base directory.
+			if err := os.WriteFile(filepath.Join(base, "snapshots"), []byte("blocked"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			original := []adk.Message{schema.SystemMessage("system"), schema.UserMessage(strings.Repeat("history ", 20000)), schema.UserMessage("continue")}
+			const summary = "<summary>usable continuation</summary>"
+			var after []adk.Message
+			if native {
+				mw, err := newEinoAgenticSummarizationMiddleware(ctx, &capturingAgenticChatModel{output: agenticAssistantTextMessage(summary)}, cfg, mwCfg, "failure", nil, "", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, state, err := mw.BeforeModelRewriteState(ctx, &adk.TypedChatModelAgentState[*schema.AgenticMessage]{Messages: EinoMessagesToAgentic(original)}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after = AgenticMessagesToEino(state.Messages)
+			} else {
+				mw, err := newEinoSummarizationMiddleware(ctx, &capturingClassicChatModel{output: &schema.Message{Role: schema.Assistant, Content: summary, ResponseMeta: &schema.ResponseMeta{FinishReason: "stop"}}}, cfg, mwCfg, "failure", nil, "", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, state, err := mw.BeforeModelRewriteState(ctx, &adk.ChatModelAgentState{Messages: original}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after = state.Messages
+			}
+			text := joinClassicMessageContent(after)
+			if !strings.Contains(text, "usable continuation") || strings.Contains(text, "transcript.txt") || strings.Contains(text, evidenceIndexMarker) {
+				t.Fatalf("failed snapshot has a misleading retrieval hint: %s", text)
+			}
+		})
+	}
+}
+
+func TestConcurrentSnapshotWritesRemainCompleteAndDeduplicated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.txt")
+	var wg sync.WaitGroup
+	errors := make(chan error, 20)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			msgs := []adk.Message{schema.UserMessage(fmt.Sprintf("Cookie: fixture-%d", i%2))}
+			snapshot, err := writeSummarizationTranscriptSnapshot(path, msgs)
+			if err == nil {
+				var body []byte
+				body, err = os.ReadFile(snapshot)
+				if err == nil && filepath.Base(snapshot) != fmt.Sprintf("transcript-%x.txt", sha256.Sum256(body)) {
+					err = fmt.Errorf("partial or mismatched snapshot: %s", snapshot)
+				}
+			}
+			errors <- err
+		}(i)
+	}
+	wg.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "snapshots", "*.txt"))
+	indexes, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "snapshots", "*.index.md"))
+	if len(files) != 2 || len(indexes) != 2 {
+		t.Fatalf("concurrent retries not deduplicated: %v %v", files, indexes)
 	}
 }
 
@@ -140,5 +228,25 @@ func TestEvidenceHintFitsBlackboardLabelBudget(t *testing.T) {
 	label := checkpointSummaryLabel("main", strings.Repeat("long summary ", 1000)+"\n"+index, 24000)
 	if len([]rune(label)) > 200 || !strings.Contains(label, "Cookie / Set-Cookie") || !strings.Contains(label, "错误 / 失败") {
 		t.Fatalf("unbounded label or lost evidence categories: %s", label)
+	}
+}
+
+func TestTruncatedEvidenceIndexDoesNotHideLaterConversationEvidence(t *testing.T) {
+	transcript := formatSummarizationTranscript([]adk.Message{
+		schema.UserMessage("old summary\n" + evidenceIndexMarker + "\nindex interrupted"),
+		{Role: schema.Tool, Content: "Cookie: sid=new-fixture\nError: later request failed"},
+	})
+	index := buildTranscriptEvidenceIndex("/new/snapshot.txt", transcript, 3)
+	if !strings.Contains(index, "Cookie / Set-Cookie：行") || !strings.Contains(index, "错误 / 失败：行") {
+		t.Fatalf("truncated old index suppressed later evidence: %s", index)
+	}
+}
+
+func TestIncompleteEvidenceIndexDoesNotConsumeLaterSummaryWhenReplaced(t *testing.T) {
+	complete := buildTranscriptEvidenceIndex("/old/snapshot.txt", "Cookie: fixture", 3)
+	input := "summary\n" + evidenceIndexMarker + "\nincomplete\nkeep this progress\n" + complete
+	updated := appendEvidenceIndex(input, "new index")
+	if !strings.Contains(updated, "keep this progress") || strings.Contains(updated, "/old/snapshot.txt") {
+		t.Fatalf("replacing a completed index consumed unrelated summary: %s", updated)
 	}
 }

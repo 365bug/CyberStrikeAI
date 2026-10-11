@@ -170,7 +170,8 @@ func newEinoAgenticSummarizationMiddleware(
 		TokenCounter:       agenticTokenCounter,
 		UserInstruction:    einoSummarizeUserInstruction,
 		EmitInternalEvents: emitInternalEvents,
-		TranscriptFilePath: transcriptPath,
+		// Finalize advertises only a successfully written immutable snapshot.
+		TranscriptFilePath: "",
 		Retry: &summarization.TypedRetryConfig[*schema.AgenticMessage]{
 			MaxRetries: &retryMax,
 			ShouldRetry: func(_ context.Context, _ *schema.AgenticMessage, err error) bool {

@@ -29,18 +29,17 @@ func buildTranscriptEvidenceIndex(snapshot, transcript string, limit int) string
 	var out strings.Builder
 	fmt.Fprintf(&out, "%s\n快照: %s\n历史快照目录: %s\n索引文件: %s.index.md\n", evidenceIndexMarker, snapshot, filepath.Dir(snapshot), snapshot)
 	lines := strings.Split(transcript, "\n")
+	skip := make([]bool, len(lines))
+	for _, span := range completeEvidenceIndexLineSpans(lines) {
+		for i := span[0]; i <= span[1]; i++ {
+			skip[i] = true
+		}
+	}
 	for _, topic := range evidenceTopics {
 		var locations []string
 		count := 0
-		inIndex := false
 		for i, line := range lines {
-			if strings.HasPrefix(line, evidenceIndexMarker) {
-				inIndex = true
-			}
-			if inIndex {
-				if strings.TrimSpace(line) == evidenceIndexEnd {
-					inIndex = false
-				}
+			if skip[i] {
 				continue
 			}
 			if topic.pattern.MatchString(line) {
@@ -66,18 +65,40 @@ func buildTranscriptEvidenceIndex(snapshot, transcript string, limit int) string
 
 func appendEvidenceIndex(msgText, section string) string {
 	// Replace a previously generated section rather than nesting evidence indexes.
-	for {
-		start := strings.Index(msgText, evidenceIndexMarker)
-		if start < 0 {
-			break
+	lines := strings.SplitAfter(msgText, "\n")
+	spans := completeEvidenceIndexLineSpans(lines)
+	var out strings.Builder
+	next := 0
+	for _, span := range spans {
+		for _, line := range lines[next:span[0]] {
+			out.WriteString(line)
 		}
-		end := strings.Index(msgText[start:], evidenceIndexEnd)
-		if end < 0 {
-			break
-		}
-		msgText = msgText[:start] + msgText[start+end+len(evidenceIndexEnd):]
+		next = span[1] + 1
 	}
-	return appendSummarizationSection(msgText, section)
+	for _, line := range lines[next:] {
+		out.WriteString(line)
+	}
+	return appendSummarizationSection(out.String(), section)
+}
+
+// Only complete blocks within a single transcript turn are generated indexes.
+// A truncated or nested heading must never swallow subsequent conversation data.
+func completeEvidenceIndexLineSpans(lines []string) [][2]int {
+	var spans [][2]int
+	start := -1
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "--- [") && strings.HasSuffix(line, "] ---") {
+			start = -1
+		}
+		if line == evidenceIndexMarker {
+			start = i
+		} else if line == evidenceIndexEnd && start >= 0 {
+			spans = append(spans, [2]int{start, i})
+			start = -1
+		}
+	}
+	return spans
 }
 
 func appendEvidenceIndexToMessage(msg adk.Message, section string) adk.Message {

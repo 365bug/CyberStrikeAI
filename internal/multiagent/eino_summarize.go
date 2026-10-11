@@ -220,7 +220,9 @@ func newEinoSummarizationMiddleware(
 		TokenCounter:       tokenCounter,
 		UserInstruction:    einoSummarizeUserInstruction,
 		EmitInternalEvents: emitInternalEvents,
-		TranscriptFilePath: transcriptPath,
+		// Publish the immutable snapshot only after the host successfully writes it
+		// in Finalize; the framework otherwise advertises even a failed/stale alias.
+		TranscriptFilePath: "",
 		Retry: &summarization.RetryConfig{
 			MaxRetries: &retryMax,
 			ShouldRetry: func(_ context.Context, _ adk.Message, err error) bool {

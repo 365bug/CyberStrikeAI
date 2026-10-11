@@ -118,7 +118,7 @@ func buildPlanExecuteAgenticExecutorHandlers(ctx context.Context, a *PlanExecute
 		execHandlers = append(execHandlers, a.AgenticSkillMiddleware)
 	}
 	if a.AppCfg != nil {
-		sumMw, sumErr := newEinoAgenticSummarizationMiddleware(ctx, a.AgenticExecModel, a.AppCfg, a.MwCfg, a.ConversationID, a.DB, a.ProjectID, a.Logger)
+		sumMw, sumErr := newEinoAgenticSummarizationMiddleware(ctx, a.AgenticExecModel, a.AppCfg, a.MwCfg, a.ConversationID, a.DB, a.ProjectID, a.Logger, "plan_execute/executor")
 		if sumErr != nil {
 			return nil, fmt.Errorf("plan_execute agentic executor summarization: %w", sumErr)
 		}

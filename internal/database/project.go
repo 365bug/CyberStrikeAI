@@ -337,7 +337,7 @@ func (db *DB) SetConversationProjectID(conversationID, projectID string) error {
 
 // ListProjectFactsForIndex 列出用于黑板索引注入的事实（不含 deprecated，除非 includeDeprecated）。
 func (db *DB) ListProjectFactsForIndex(projectID string, includeDeprecated bool) ([]*ProjectFact, error) {
-	query := `SELECT id, project_id, fact_key, category, summary, COALESCE(body,''), confidence,
+	query := `SELECT id, project_id, fact_key, category, summary, '', confidence,
 		COALESCE(source_conversation_id,''), COALESCE(source_message_id,''), pinned,
 		COALESCE(related_vulnerability_id,''), created_at, updated_at
 		FROM project_facts WHERE project_id = ?`

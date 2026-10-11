@@ -88,6 +88,7 @@ func newEinoSummarizationMiddleware(
 	db *database.DB,
 	projectID string,
 	logger *zap.Logger,
+	memoryScopes ...string,
 ) (adk.ChatModelAgentMiddleware, error) {
 	if summaryModel == nil || appCfg == nil {
 		return nil, fmt.Errorf("multiagent: summarization 需要 model 与配置")
@@ -144,12 +145,16 @@ func newEinoSummarizationMiddleware(
 	if summaryInputMax < 4096 {
 		summaryInputMax = 4096
 	}
+	memoryScope := summarizationMemoryScope(memoryScopes)
 	transcriptPath := ""
 	if conv := strings.TrimSpace(conversationID); conv != "" {
 		baseRoot := filepath.Join(os.TempDir(), "cyberstrike-summarization")
 		if dbPath := strings.TrimSpace(appCfg.Database.Path); dbPath != "" {
 			// Persist with the same lifecycle as local conversation storage.
 			baseRoot = filepath.Join(filepath.Dir(dbPath), "conversation_artifacts", sanitizeEinoPathSegment(conv), "summarization")
+		}
+		if memoryScope != "main" {
+			baseRoot = filepath.Join(baseRoot, "scopes", summarizationScopeID(memoryScope))
 		}
 		base := baseRoot
 		if abs, err := filepath.Abs(base); err == nil {
@@ -247,8 +252,7 @@ func newEinoSummarizationMiddleware(
 			if len(defaultFinalized) == 0 {
 				return nil, fmt.Errorf("summarization default finalize returned no messages")
 			}
-			summary = appendTranscriptPathToSummarizationMessage(defaultFinalized[len(defaultFinalized)-1], transcriptPath)
-			summary = stripAnalysisFromSummarizationMessage(summary)
+			summary = finalizeSummarizationMemory(defaultFinalized[len(defaultFinalized)-1], originalMessages, transcriptPath, db, projectID, conversationID, memoryScope, appCfg.Project, logger)
 			userLedger := buildOriginalUserIntentLedgerMessage(originalMessages, userLedgerMaxRunes, userLedgerEntryMaxRunes)
 			out, ferr := summarizeFinalizeWithRecentAssistantToolTrail(ctx, compactionMessages, summary, tokenCounter, recentTrailMax)
 			if ferr != nil {
@@ -679,14 +683,8 @@ func writeSummarizationTranscript(path string, msgs []adk.Message) error {
 	if path == "" {
 		return nil
 	}
-	body := formatSummarizationTranscript(msgs)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("mkdir transcript dir: %w", err)
-	}
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		return fmt.Errorf("write transcript: %w", err)
-	}
-	return nil
+	_, err := writeSummarizationTranscriptSnapshot(path, msgs)
+	return err
 }
 
 func einoSummarizationTokenCounter(openAIModel string) summarization.TokenCounterFunc {

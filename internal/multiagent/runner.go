@@ -222,7 +222,7 @@ func RunDeepAgent(
 
 			subMax := resolveMaxIterations(appCfg, sub.MaxIterations)
 
-			subSumMw, err := newEinoAgenticSummarizationMiddleware(ctx, subModel, appCfg, &ma.EinoMiddleware, conversationID, db, projectID, logger)
+			subSumMw, err := newEinoAgenticSummarizationMiddleware(ctx, subModel, appCfg, &ma.EinoMiddleware, conversationID, db, projectID, logger, "sub/"+id)
 			if err != nil {
 				return nil, fmt.Errorf("子代理 %q agentic summarization 中间件: %w", id, err)
 			}
@@ -488,7 +488,7 @@ func RunDeepAgent(
 		if perr != nil {
 			return nil, fmt.Errorf("plan_execute 执行器 AgenticModel: %w", perr)
 		}
-		planRewriteSumMw, perr := newEinoSummarizationMiddleware(ctx, execModel, appCfg, &ma.EinoMiddleware, conversationID, db, projectID, logger)
+		planRewriteSumMw, perr := newEinoSummarizationMiddleware(ctx, execModel, appCfg, &ma.EinoMiddleware, conversationID, db, projectID, logger, "plan_execute/planning")
 		if perr != nil {
 			return nil, fmt.Errorf("plan_execute planner/replanner summarization: %w", perr)
 		}

@@ -28,6 +28,7 @@ func newEinoAgenticSummarizationMiddleware(
 	db *database.DB,
 	projectID string,
 	logger *zap.Logger,
+	memoryScopes ...string,
 ) (adk.TypedChatModelAgentMiddleware[*schema.AgenticMessage], error) {
 	if summaryModel == nil || appCfg == nil {
 		return nil, fmt.Errorf("multiagent: agentic summarization 需要 model 与配置")
@@ -90,11 +91,15 @@ func newEinoAgenticSummarizationMiddleware(
 		summaryInputMax = 4096
 	}
 
+	memoryScope := summarizationMemoryScope(memoryScopes)
 	transcriptPath := ""
 	if conv := strings.TrimSpace(conversationID); conv != "" {
 		baseRoot := filepath.Join(os.TempDir(), "cyberstrike-summarization")
 		if dbPath := strings.TrimSpace(appCfg.Database.Path); dbPath != "" {
 			baseRoot = filepath.Join(filepath.Dir(dbPath), "conversation_artifacts", sanitizeEinoPathSegment(conv), "summarization")
+		}
+		if memoryScope != "main" {
+			baseRoot = filepath.Join(baseRoot, "scopes", summarizationScopeID(memoryScope))
 		}
 		base := baseRoot
 		if abs, err := filepath.Abs(base); err == nil {
@@ -202,8 +207,7 @@ func newEinoAgenticSummarizationMiddleware(
 			if len(defaultFinalized) == 0 {
 				return nil, fmt.Errorf("agentic summarization default finalize returned no messages")
 			}
-			summaryMsg := appendTranscriptPathToSummarizationMessage(defaultFinalized[len(defaultFinalized)-1], transcriptPath)
-			summaryMsg = stripAnalysisFromSummarizationMessage(summaryMsg)
+			summaryMsg := finalizeSummarizationMemory(defaultFinalized[len(defaultFinalized)-1], classicOriginal, transcriptPath, db, projectID, conversationID, memoryScope, appCfg.Project, logger)
 			userLedger := buildOriginalUserIntentLedgerMessage(classicOriginal, userLedgerMaxRunes, userLedgerEntryMaxRunes)
 			out, ferr := summarizeFinalizeWithRecentAssistantToolTrail(ctx, compactionMessages, summaryMsg, classicTokenCounter, recentTrailMax)
 			if ferr != nil {

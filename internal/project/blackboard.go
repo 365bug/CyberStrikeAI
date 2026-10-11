@@ -49,31 +49,44 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 	allEdges, _ := db.ListProjectFactEdgesByProject(projectID)
 	_, incomingByTarget := indexEdgeGroupMaps(allEdges)
 
+	maxRunes := cfg.FactIndexMaxRunesEffective()
+	header := fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n", indexSingleLine(proj.Name), proj.ID)
 	if len(facts) == 0 {
-		return wrapFactIndexBlock(fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n（暂无事实）\n%s", proj.Name, proj.ID, factIndexFooterEmpty)), nil
+		block := wrapFactIndexBlock(header + "（暂无事实）\n" + factIndexFooterEmpty)
+		if len([]rune(block)) <= maxRunes {
+			return block, nil
+		}
+		return minimalFactIndexBlock(maxRunes), nil
 	}
 
 	sortFactsForIndex(facts)
 
-	maxRunes := cfg.FactIndexMaxRunesEffective()
 	pathMaxRunes := cfg.FactIndexPathMaxRunesEffective()
 	footer := factIndexFooterGetDetail + "\n" + factIndexFooterWriteHint
-	footerRunes := len([]rune(footer))
-	factsBudget := maxRunes - pathMaxRunes - footerRunes
+	// Include markers, separators and the worst-case omission notice in the cap.
+	omissionReserve := len([]rune(factIndexOmissionNotice(len(facts))))
+	framingRunes := len([]rune(wrapFactIndexBlock(header+footer))) + omissionReserve
+	available := maxRunes - framingRunes
+	if available <= 0 {
+		return minimalFactIndexBlock(maxRunes), nil
+	}
+	if pathMaxRunes > available {
+		pathMaxRunes = available
+	}
+	factsBudget := available - pathMaxRunes
 	if factsBudget < 800 {
-		factsBudget = maxRunes - footerRunes
+		factsBudget = available
 		pathMaxRunes = 0
 	}
 
 	indexedKeys := make(map[string]struct{}, len(facts))
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n", proj.Name, proj.ID))
-	used := len([]rune(b.String()))
+	b.WriteString(header)
+	used := 0
 	omitted := 0
 
 	for _, f := range facts {
-		indexedKeys[f.FactKey] = struct{}{}
-		line := fmt.Sprintf("- [%s] %s — %s (%s)", f.FactKey, f.Category, strings.TrimSpace(f.Summary), f.Confidence)
+		line := fmt.Sprintf("- [%s] %s — %s (%s)", f.FactKey, f.Category, truncateIndexSummary(indexSingleLine(f.Summary), cfg.FactSummaryMaxRunesEffective()), f.Confidence)
 		line += FormatFactIndexLinksHint(f.FactKey, incomingByTarget[f.FactKey])
 		line += "\n"
 		lineRunes := len([]rune(line))
@@ -81,19 +94,42 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 			omitted++
 			continue
 		}
+		indexedKeys[f.FactKey] = struct{}{}
 		b.WriteString(line)
 		used += lineRunes
 	}
 
 	if omitted > 0 {
-		b.WriteString(fmt.Sprintf("\n（另有 %d 条未列入索引，请使用 list_project_facts 或 search_project_facts 查询。）\n", omitted))
+		b.WriteString(factIndexOmissionNotice(omitted))
 	}
 
-	if pathSection := BuildFactPathOverviewSection(allEdges, indexedKeys, pathMaxRunes); pathSection != "" {
+	if pathSection := BuildFactPathOverviewSection(allEdges, indexedKeys, pathMaxRunes-1); len(indexedKeys) > 0 && pathSection != "" {
 		b.WriteString("\n")
 		b.WriteString(pathSection)
 	}
 
 	b.WriteString(footer)
 	return wrapFactIndexBlock(b.String()), nil
+}
+
+func indexSingleLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+func truncateIndexSummary(s string, maxRunes int) string {
+	runes := []rune(s)
+	if maxRunes > 0 && len(runes) > maxRunes {
+		return string(runes[:maxRunes-1]) + "…"
+	}
+	return s
+}
+
+func factIndexOmissionNotice(count int) string {
+	return fmt.Sprintf("\n（另有 %d 条未列入索引，请使用 list_project_facts 或 search_project_facts 查询。）\n", count)
+}
+
+func minimalFactIndexBlock(maxRunes int) string {
+	block := wrapFactIndexBlock("## 项目黑板索引\n索引预算不足；使用 list_project_facts 或 search_project_facts 按需查询。")
+	if len([]rune(block)) > maxRunes {
+		return ""
+	}
+	return block
 }

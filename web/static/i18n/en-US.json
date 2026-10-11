@@ -288,7 +288,7 @@
     "successRate": "Tool success rate",
     "tokenUsage": "Token usage",
     "usageCacheHitRate": "Cache hit {{rate}}",
-    "tokenUsageSub": "Last {{days}} days: {{calls}} calls · Today {{today}}",
+    "tokenUsageSub": "Today {{today}} · Cache hit {{rate}}",
     "noTokenUsageYet": "No usage yet",
     "clickToViewTasks": "Click to view tasks",
     "clickToViewChat": "Click to view conversations",

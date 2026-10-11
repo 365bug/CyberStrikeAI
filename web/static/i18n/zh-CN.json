@@ -288,7 +288,7 @@
     "successRate": "工具执行成功率",
     "tokenUsage": "Token 用量",
     "usageCacheHitRate": "缓存命中 {{rate}}",
-    "tokenUsageSub": "近 {{days}} 天 {{calls}} 次调用 · 今日 {{today}}",
+    "tokenUsageSub": "今日 {{today}} · 缓存命中 {{rate}}",
     "noTokenUsageYet": "暂无用量",
     "clickToViewTasks": "点击查看任务管理",
     "clickToViewChat": "点击查看对话",

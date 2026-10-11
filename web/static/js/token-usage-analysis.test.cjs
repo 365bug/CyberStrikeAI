@@ -75,7 +75,8 @@ test('all supported languages expose usage labels and interpolation placeholders
         for (const key of ['usageView', 'usageScope', 'usageCacheRead', 'usageCacheWrite', 'usageTrend', 'usageCacheHitRate']) assert.ok(data.dashboard[key]);
         assert.ok(data.settings.nav.tokenUsage);
         assert.match(data.dashboard.usageCacheHitRate, /\{\{rate\}\}/);
-        assert.match(data.dashboard.tokenUsageSub, /\{\{days\}\}/);
+        assert.match(data.dashboard.tokenUsageSub, /\{\{today\}\}/);
+        assert.match(data.dashboard.tokenUsageSub, /\{\{rate\}\}/);
         assert.match(data.chat.turnTokenUsageTitle, /\{\{cacheWrite\}\}/);
     }
 });

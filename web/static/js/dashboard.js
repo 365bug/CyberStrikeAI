@@ -72,7 +72,6 @@ async function refreshDashboard() {
         setKpiSubText('dashboard-kpi-tools-sub-text', '…');
         setKpiSubText('dashboard-kpi-rate-sub-text', '…');
         setKpiSubText('dashboard-kpi-token-sub-text', '…');
-        setKpiSubText('dashboard-kpi-token-cache-text', '…');
         hideEl('dashboard-kpi-vuln-critical-badge');
         hideEl('dashboard-alert-banner');
         setRecentVulnsLoading();
@@ -443,7 +442,6 @@ async function refreshDashboard() {
         setEl('dashboard-kpi-tools-calls', '-');
         setEl('dashboard-kpi-token-usage', '-');
         setKpiSubText('dashboard-kpi-token-sub-text', '-');
-        setKpiSubText('dashboard-kpi-token-cache-text', '-');
         setKpiSubText('dashboard-kpi-tasks-sub-text', '-');
         setKpiSubText('dashboard-kpi-vuln-sub-text', '-');
         setKpiSubText('dashboard-kpi-tools-sub-text', '-');
@@ -715,13 +713,10 @@ function renderDashboardTokenUsage(res) {
     if (!summary) {
         setEl('dashboard-kpi-token-usage', '-');
         setKpiSubText('dashboard-kpi-token-sub-text', '-');
-        setKpiSubText('dashboard-kpi-token-cache-text', '-');
         return;
     }
     const cacheRate = tokenUsageCacheRate(summary);
-    setKpiSubText('dashboard-kpi-token-cache-text', dt('dashboard.usageCacheHitRate', { rate: cacheRate }, '缓存命中 ' + cacheRate));
     const total = Number(summary.totalTokens || 0);
-    const calls = Number(summary.modelCalls || 0);
     const today = res && res.today ? Number(res.today.totalTokens || 0) : 0;
     if (!Number.isFinite(total) || total <= 0) {
         setEl('dashboard-kpi-token-usage', '0');
@@ -731,10 +726,9 @@ function renderDashboardTokenUsage(res) {
     setEl('dashboard-kpi-token-usage', formatTokenUsageCompact(total));
     setKpiSubText('dashboard-kpi-token-sub-text',
         dt('dashboard.tokenUsageSub', {
-            days: 7,
             today: formatTokenUsageCompact(today),
-            calls: Number.isFinite(calls) ? calls : 0
-        }, '近 7 天 ' + (Number.isFinite(calls) ? calls : 0) + ' 次调用 · 今日 ' + formatTokenUsageCompact(today)));
+            rate: cacheRate
+        }, '今日 ' + formatTokenUsageCompact(today) + ' · 缓存命中 ' + cacheRate));
 }
 
 function formatTokenUsageCompact(num) {

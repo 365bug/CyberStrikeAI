@@ -47221,8 +47221,6 @@ html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
 }
 
 /* Provider-reported token analysis, scoped by the dashboard project selector. */
-.dashboard-kpi-sub--tokens { row-gap: 2px; }
-#dashboard-kpi-token-cache-text { flex-basis: 100%; }
 .token-usage-panel { margin-bottom: 20px; padding: 18px 22px; }
 .token-usage-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .token-usage-toolbar { display: flex; align-items: center; gap: 12px; margin-top: 18px; }

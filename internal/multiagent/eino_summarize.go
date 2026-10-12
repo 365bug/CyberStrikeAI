@@ -253,7 +253,7 @@ func newEinoSummarizationMiddleware(
 		},
 		Finalize: func(ctx context.Context, originalMessages []adk.Message, summary adk.Message) ([]adk.Message, error) {
 			compactionMessages := stripOriginalUserIntentLedgerFromMessages(originalMessages)
-			defaultFinalized, derr := summarization.DefaultFinalize(ctx, compactionMessages, summary)
+			defaultFinalized, derr := summarization.DefaultFinalize(ctx, summarizationDefaultFinalizeInput(compactionMessages, originalMessages), summary)
 			if derr != nil {
 				return nil, derr
 			}

@@ -125,6 +125,7 @@ type ChatMessage struct {
 	// Internal provenance is restored from trusted trace metadata, never from
 	// message text. Keep it out of provider request JSON.
 	SummarizationKind         string   `json:"-"`
+	GeneratedContextKind      string   `json:"-"`
 	OriginalUserIntentEntries []string `json:"-"`
 }
 

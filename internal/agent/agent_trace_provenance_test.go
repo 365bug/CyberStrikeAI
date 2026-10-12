@@ -58,3 +58,34 @@ func TestTraceTrimDoesNotTreatGeneratedSummaryAsHumanTurn(t *testing.T) {
 		t.Fatalf("JSON trim lost provenance: %+v", parsed)
 	}
 }
+
+func TestGeneratedExecutionTraceStaysOutsideHumanTurnAndProviderJSON(t *testing.T) {
+	msgs := []ChatMessage{{Role: "user", Content: "human request"}, {Role: "user", Content: "PLAN_DATA", GeneratedContextKind: PlanExecuteExecutorContext}, {Role: "assistant", Content: "result"}}
+	raw, err := MessagesToTraceJSON(msgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = ExtractLastUserTurnTraceJSON(raw)
+	parsed, err := ParseTraceMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trimmed := ExtractLastUserTurnMessages(parsed)
+	if len(trimmed) != 3 || trimmed[0].Content != "human request" || trimmed[1].GeneratedContextKind != PlanExecuteExecutorContext {
+		t.Fatalf("generated template became human boundary: %+v", trimmed)
+	}
+	provider, err := json.Marshal(trimmed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(provider), GeneratedContextTypeKey) || strings.Contains(string(provider), PlanExecuteExecutorContext) {
+		t.Fatal("internal template origin leaked to provider JSON")
+	}
+	unknown, err := ParseTraceMessages(`[{"role":"user","content":"real user","extra":{"_csai_generated_context_type":"unrecognized"}}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unknown[0].GeneratedContextKind != "" {
+		t.Fatal("unknown user metadata altered source classification")
+	}
+}

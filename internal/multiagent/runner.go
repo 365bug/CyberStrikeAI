@@ -716,6 +716,12 @@ func historyToMessages(history []agent.ChatMessage, appCfg *config.Config, mwCfg
 				if h.SummarizationKind == "summary" || h.SummarizationKind == "skills" {
 					msg.Extra = map[string]interface{}{agent.SummarizationContentTypeKey: h.SummarizationKind}
 				}
+				if agent.IsGeneratedExecutionContext(h.GeneratedContextKind) {
+					if msg.Extra == nil {
+						msg.Extra = make(map[string]interface{})
+					}
+					msg.Extra[agent.GeneratedContextTypeKey] = h.GeneratedContextKind
+				}
 				raw = append(raw, msg)
 			}
 		case "system":

@@ -503,8 +503,16 @@ func mergeFactBodyOnUpdate(incoming, existing string) string {
 
 // UpsertProjectFact 创建或更新事实（按 project_id + fact_key）。
 func (db *DB) UpsertProjectFact(f *ProjectFact) (*ProjectFact, error) {
-	if err := ValidateFactKey(f.FactKey); err != nil {
-		return nil, err
+	keyErr := ValidateFactKey(f.FactKey)
+	if keyErr != nil && (f.ID == "" || ValidateFactKey(strings.TrimSpace(f.FactKey)) != nil) {
+		return nil, keyErr
+	}
+	existing, err := db.GetProjectFactByKey(f.ProjectID, f.FactKey)
+	// Older versions accepted and stored padded keys. Preserve their exact
+	// identity when editing a loaded record, without allowing new padded keys
+	// or silently renaming historical evidence and its relationship references.
+	if keyErr != nil && (err != nil || existing == nil || existing.ID != f.ID) {
+		return nil, keyErr
 	}
 	if strings.TrimSpace(f.Category) == "" {
 		f.Category = "note"
@@ -514,7 +522,6 @@ func (db *DB) UpsertProjectFact(f *ProjectFact) (*ProjectFact, error) {
 	}
 	now := time.Now()
 
-	existing, err := db.GetProjectFactByKey(f.ProjectID, f.FactKey)
 	if err == nil && existing != nil {
 		f.ID = existing.ID
 		f.CreatedAt = existing.CreatedAt

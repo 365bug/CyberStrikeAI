@@ -58,6 +58,10 @@ func ParseTraceMessages(traceInputJSON string) ([]ChatMessage, error) {
 			if kind == "summary" || kind == "skills" {
 				msg.SummarizationKind = kind
 			}
+			generatedKind, _ := extra[GeneratedContextTypeKey].(string)
+			if IsGeneratedExecutionContext(generatedKind) {
+				msg.GeneratedContextKind = generatedKind
+			}
 		}
 		if strings.EqualFold(role, "system") {
 			msg.OriginalUserIntentEntries = traceUserIntentEntries(extra[OriginalUserIntentEntriesKey])
@@ -177,7 +181,7 @@ func ExtractLastUserTurnMessages(msgs []ChatMessage) []ChatMessage {
 	var ledger *ChatMessage
 	for i := range msgs {
 		m := msgs[i]
-		if strings.EqualFold(m.Role, "user") && m.SummarizationKind == "" {
+		if strings.EqualFold(m.Role, "user") && m.SummarizationKind == "" && !IsGeneratedExecutionContext(m.GeneratedContextKind) {
 			lastUser = i
 		}
 		if strings.EqualFold(m.Role, "system") && len(m.OriginalUserIntentEntries) > 0 {
@@ -204,7 +208,8 @@ func ExtractLastUserTurnTraceJSON(traceInputJSON string) string {
 		role, _ := m["role"].(string)
 		extra, _ := m["extra"].(map[string]interface{})
 		kind, _ := extra[SummarizationContentTypeKey].(string)
-		if strings.EqualFold(role, "user") && kind != "summary" && kind != "skills" {
+		generatedKind, _ := extra[GeneratedContextTypeKey].(string)
+		if strings.EqualFold(role, "user") && kind != "summary" && kind != "skills" && !IsGeneratedExecutionContext(generatedKind) {
 			lastUser = i
 		}
 		if strings.EqualFold(role, "system") {
@@ -266,6 +271,9 @@ func MessagesToTraceJSON(msgs []ChatMessage) (string, error) {
 		}
 		if strings.EqualFold(m.Role, "user") && (m.SummarizationKind == "summary" || m.SummarizationKind == "skills") {
 			extra[SummarizationContentTypeKey] = m.SummarizationKind
+		}
+		if strings.EqualFold(m.Role, "user") && IsGeneratedExecutionContext(m.GeneratedContextKind) {
+			extra[GeneratedContextTypeKey] = m.GeneratedContextKind
 		}
 		if strings.EqualFold(m.Role, "system") && len(m.OriginalUserIntentEntries) > 0 {
 			extra[OriginalUserIntentEntriesKey] = m.OriginalUserIntentEntries

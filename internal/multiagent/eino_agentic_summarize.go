@@ -201,7 +201,7 @@ func newEinoAgenticSummarizationMiddleware(
 				return nil, fmt.Errorf("agentic summarization returned empty summary")
 			}
 			compactionMessages := stripOriginalUserIntentLedgerFromMessages(classicOriginal)
-			defaultFinalized, derr := summarization.DefaultFinalize(ctx, compactionMessages, classicSummary)
+			defaultFinalized, derr := summarization.DefaultFinalize(ctx, summarizationDefaultFinalizeInput(compactionMessages, classicOriginal), classicSummary)
 			if derr != nil {
 				return nil, derr
 			}

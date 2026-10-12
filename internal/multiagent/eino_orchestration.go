@@ -188,6 +188,7 @@ func planExecuteExecutorGenInput(
 		if err != nil {
 			return nil, err
 		}
+		userMsgs = withPlanExecuteInputProvenance(userMsgs, in.UserInput, appCfg, mwCfg, agent.PlanExecuteExecutorContext)
 		userMsgs = normalizeSingleLeadingSystemMessage(userMsgs, oi)
 		logPlanExecuteModelInputEstimate(logger, modelName, conversationID, "plan_execute_executor_gen_input", userMsgs)
 		return userMsgs, nil
@@ -197,8 +198,10 @@ func planExecuteExecutorGenInput(
 func planExecuteFormatInput(input []adk.Message) string {
 	var sb strings.Builder
 	for _, msg := range input {
-		sb.WriteString(msg.Content)
-		sb.WriteString("\n")
+		if msg == nil {
+			continue
+		}
+		appendTranscriptMessage(&sb, msg)
 	}
 	return sb.String()
 }
@@ -235,6 +238,7 @@ func planExecuteReplannerGenInput(
 		if err != nil {
 			return nil, err
 		}
+		msgs = withPlanExecuteInputProvenance(msgs, in.UserInput, appCfg, mwCfg, agent.PlanExecuteReplannerContext)
 		if rewritten, rerr := applyBeforeModelRewriteHandlers(ctx, msgs, rewriteHandlers); rerr == nil && len(rewritten) > 0 {
 			msgs = rewritten
 		}

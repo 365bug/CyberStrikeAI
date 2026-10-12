@@ -209,16 +209,50 @@ func buildOriginalUserIntentLedger(msgs []adk.Message, maxRunes, entryMaxRunes i
 	if len(entries) == 0 {
 		return ""
 	}
-	var sb strings.Builder
+	var lines []string
+	used := 0
 	for i, entry := range entries {
-		line := fmt.Sprintf("- [U%03d] %s\n", i+1, sanitizeUserIntentLedgerEntry(entry, entryMaxRunes))
-		if maxRunes > 0 && utf8RuneLen(sb.String())+utf8RuneLen(line) > maxRunes {
-			sb.WriteString("- [...truncated] 用户原始输入账本超过预算；完整压缩前记录见 summarization transcript。\n")
+		prefix := fmt.Sprintf("- [U%03d] ", i+1)
+		text := sanitizeUserIntentLedgerEntry(entry, entryMaxRunes)
+		line := prefix + text
+		separator := 0
+		if len(lines) > 0 {
+			separator = 1
+		}
+		if maxRunes > 0 && used+separator+utf8RuneLen(line) > maxRunes {
+			// The entry budget excludes host formatting. Keep a bounded first
+			// human entry rather than dropping it when its own cap fills the
+			// entire ledger budget; clipping retains the existing text prefix.
+			if len(lines) == 0 {
+				textBudget := maxRunes - utf8RuneLen(prefix)
+				if textBudget > 0 {
+					lines = append(lines, prefix+fitUserIntentLedgerText(text, textBudget))
+				}
+			} else {
+				const notice = "- [...truncated] 用户原始输入账本超过预算；完整压缩前记录见 summarization transcript。"
+				remaining := maxRunes - used - separator
+				// Never emit an incomplete marker that could be mistaken for a
+				// human entry when this ledger is carried into the next round.
+				if remaining >= utf8RuneLen("- [...truncated]") {
+					lines = append(lines, truncateUserIntentLedgerRunes(notice, remaining))
+				}
+			}
 			break
 		}
-		sb.WriteString(line)
+		lines = append(lines, line)
+		used += separator + utf8RuneLen(line)
 	}
-	return strings.TrimSpace(sb.String())
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func fitUserIntentLedgerText(text string, maxRunes int) string {
+	if utf8RuneLen(text) <= maxRunes {
+		return text
+	}
+	if maxRunes > 3 {
+		return truncateUserIntentLedgerRunes(text, maxRunes-3) + "..."
+	}
+	return truncateUserIntentLedgerRunes(text, maxRunes)
 }
 
 func collectOriginalUserIntentEntries(msgs []adk.Message) []string {
@@ -248,7 +282,7 @@ func collectOriginalUserIntentEntries(msgs []adk.Message) []string {
 				add(entry)
 			}
 		}
-		if msg.Role == schema.User && !isInternalSummarizationUserMessage(msg) {
+		if msg.Role == schema.User && !isInternalSummarizationUserMessage(msg) && !isGeneratedExecutionUserMessage(msg) {
 			add(adkUserMessageText(msg))
 		}
 	}

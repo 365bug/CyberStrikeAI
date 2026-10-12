@@ -231,6 +231,9 @@ func collectOriginalUserIntentEntries(msgs []adk.Message) []string {
 		if msg == nil {
 			continue
 		}
+		if isInternalSummarizationUserMessage(msg) {
+			continue
+		}
 		for _, entry := range extractExistingUserIntentLedgerEntries(messageTextForLedger(msg)) {
 			add(entry)
 		}
@@ -239,6 +242,17 @@ func collectOriginalUserIntentEntries(msgs []adk.Message) []string {
 		}
 	}
 	return entries
+}
+
+// Eino deliberately transports generated summaries and preserved skill context
+// as user-role messages. Their provenance, not their role/text, distinguishes
+// them from human input. Extra survives classic/native message conversion.
+func isInternalSummarizationUserMessage(msg adk.Message) bool {
+	if msg == nil {
+		return false
+	}
+	kind, _ := msg.Extra["_eino_summarization_content_type"].(string)
+	return kind == "summary" || kind == "skills"
 }
 
 func messageTextForLedger(msg adk.Message) string {

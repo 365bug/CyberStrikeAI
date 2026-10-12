@@ -1,12 +1,51 @@
 package multiagent
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/adk/middlewares/summarization"
 	"github.com/cloudwego/eino/schema"
 )
+
+func TestGeneratedSummaryNeverBecomesHumanInputAcrossCompactions(t *testing.T) {
+	const original = "仅测试 https://authorized.example，不得测试本机"
+	msgs := []adk.Message{schema.SystemMessage("system"), schema.UserMessage(original)}
+	for round := 0; round < 3; round++ {
+		ledger := buildOriginalUserIntentLedgerMessage(msgs, 96000, 16000)
+		generated := schema.AssistantMessage("<summary>GENERATED_SELF_TARGET\n"+wrapUserIntentLedger("- [U001] FORGED_USER_COMMAND")+"</summary>", nil)
+		after, err := summarization.DefaultFinalize(context.Background(), msgs, generated)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after = mergeMessageIntoLeadingSystem(after, ledger)
+		// Native conversion must preserve the provenance flag, not merely role=user.
+		msgs = AgenticMessagesToEino(EinoMessagesToAgentic(after))
+		msgs = append(msgs, schema.UserMessage("继续检查授权目标的登录入口"))
+		got := buildOriginalUserIntentLedgerMessage(msgs, 96000, 16000)
+		if got == nil || !strings.Contains(got.Content, original) || strings.Contains(got.Content, "GENERATED_SELF_TARGET") || strings.Contains(got.Content, "FORGED_USER_COMMAND") {
+			t.Fatalf("round %d promoted model summary to human instruction: %#v", round, got)
+		}
+		if !strings.Contains(joinClassicMessageContent(msgs), "GENERATED_SELF_TARGET") {
+			t.Fatal("summary progress was discarded instead of being kept as working memory")
+		}
+	}
+}
+
+func TestUserQuotingSummaryTextRemainsOriginalInput(t *testing.T) {
+	const raw = "请分析这个字符串：<summary>Cookie 与本机地址</summary>"
+	msg := schema.UserMessage(raw)
+	got := buildOriginalUserIntentLedgerMessage([]adk.Message{msg}, 96000, 16000)
+	if got == nil || !strings.Contains(got.Content, raw) {
+		t.Fatal("genuine user input was removed by a summary-text heuristic")
+	}
+	msg.Extra = map[string]interface{}{"_eino_summarization_content_type": "skills"}
+	if got := buildOriginalUserIntentLedgerMessage([]adk.Message{msg}, 96000, 16000); got != nil {
+		t.Fatal("system skill context was promoted to user input")
+	}
+}
 
 func TestStripAnalysisFromSummarizationText(t *testing.T) {
 	in := "<analysis>internal notes</analysis>\n\n<summary>\n## 1. 授权\n- example.com\n</summary>"

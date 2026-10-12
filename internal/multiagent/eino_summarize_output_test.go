@@ -31,6 +31,10 @@ func TestGeneratedSummaryNeverBecomesHumanInputAcrossCompactions(t *testing.T) {
 		if !strings.Contains(joinClassicMessageContent(msgs), "GENERATED_SELF_TARGET") {
 			t.Fatal("summary progress was discarded instead of being kept as working memory")
 		}
+		transcript := formatSummarizationTranscript(msgs)
+		if !strings.Contains(transcript, "[origin: system-generated summary/skill context; not human input or new authorization]") {
+			t.Fatal("snapshot falsely presents a generated user-role summary as human input")
+		}
 	}
 }
 

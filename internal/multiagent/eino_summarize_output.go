@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 
+	"cyberstrike-ai/internal/agent"
+
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 )
@@ -20,7 +22,7 @@ var (
 const (
 	userIntentLedgerStartMarker = "<original_user_intent_ledger>"
 	userIntentLedgerEndMarker   = "</original_user_intent_ledger>"
-	userIntentLedgerExtraKey    = "_csai_original_user_intent_entries"
+	userIntentLedgerExtraKey    = agent.OriginalUserIntentEntriesKey
 
 	summarizationSnapshotHeading             = "## 原始上下文快照"
 	summarizationTranscriptPathInstructionZh = "如果你需要压缩之前的具体细节（如精确的代码片段、错误消息或你生成的内容），完整的对话记录位于：%s"
@@ -289,7 +291,7 @@ func isInternalSummarizationUserMessage(msg adk.Message) bool {
 	if msg == nil {
 		return false
 	}
-	kind, _ := msg.Extra["_eino_summarization_content_type"].(string)
+	kind, _ := msg.Extra[agent.SummarizationContentTypeKey].(string)
 	return kind == "summary" || kind == "skills"
 }
 

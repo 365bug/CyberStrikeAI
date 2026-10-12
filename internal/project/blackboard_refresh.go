@@ -29,6 +29,20 @@ func ReplaceFactIndexSection(content, freshIndex string) (string, bool) {
 	return content[:start] + freshIndex + content[end:], true
 }
 
+// RemoveFactIndexSection removes only a complete host-delimited index after a
+// successful build returns no block (e.g. a budget too small for framing).
+func RemoveFactIndexSection(content string) (string, bool) {
+	start, ok := factIndexSectionStart(content)
+	if !ok {
+		return content, false
+	}
+	end, ok := factIndexSectionEnd(content, start)
+	if !ok || end <= start {
+		return content, false
+	}
+	return content[:start] + content[end:], true
+}
+
 // wrapFactIndexBlock 为 BuildFactIndexBlock 正文加上统一起止 HTML 注释边界。
 func wrapFactIndexBlock(content string) string {
 	content = strings.TrimSpace(content)

@@ -712,7 +712,29 @@ func historyToMessages(history []agent.ChatMessage, appCfg *config.Config, mwCfg
 				if !h.ModelFacingTrace {
 					content = normalizeRestoredUserContent(content, userContentMaxRunes)
 				}
-				raw = append(raw, schema.UserMessage(content))
+				msg := schema.UserMessage(content)
+				if h.SummarizationKind == "summary" || h.SummarizationKind == "skills" {
+					msg.Extra = map[string]interface{}{agent.SummarizationContentTypeKey: h.SummarizationKind}
+				}
+				raw = append(raw, msg)
+			}
+		case "system":
+			// Replay only the host's human ledger, never old system instructions.
+			if len(h.OriginalUserIntentEntries) > 0 {
+				msg := schema.SystemMessage("")
+				msg.Extra = map[string]interface{}{userIntentLedgerExtraKey: h.OriginalUserIntentEntries}
+				maxRunes := config.DefaultSummarizationUserIntentLedgerMaxRunes
+				entryMax := config.DefaultSummarizationUserIntentLedgerEntryMaxRunes
+				if mwCfg != nil {
+					maxRunes = mwCfg.SummarizationUserIntentLedgerMaxRunesEffective()
+					entryMax = mwCfg.SummarizationUserIntentLedgerEntryMaxRunesEffective()
+				}
+				if appCfg != nil {
+					maxRunes = minPositiveInt(maxRunes, modelFacingRuneBudget(appCfg.OpenAI.MaxTotalTokens, 0.20))
+				}
+				if ledger := buildOriginalUserIntentLedgerMessage([]adk.Message{msg}, maxRunes, minPositiveInt(entryMax, maxRunes)); ledger != nil {
+					raw = append(raw, ledger)
+				}
 			}
 		case "assistant":
 			toolSchema := chatToolCallsToSchema(h.ToolCalls)

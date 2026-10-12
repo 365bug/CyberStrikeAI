@@ -42,7 +42,9 @@ func writeSummarizationTranscriptSnapshot(path string, msgs []adk.Message) (stri
 		return "", err
 	}
 	if err := writeContextArtifactAtomically(path, body); err != nil {
-		return "", err
+		// The immutable evidence already exists; an expendable alias failure
+		// must not hide its successful retrieval path.
+		return snapshot, err
 	}
 	return snapshot, nil
 }
@@ -158,6 +160,9 @@ func checkpointSummaryLabel(scope, summary string, cap int) string {
 	if start := strings.Index(summary, summarizationSnapshotHeading); start >= 0 {
 		summary = summary[:start]
 	}
+	if clues := checkpointRetrievalClues(summary); clues != "" {
+		summary = clues
+	}
 	var lines []string
 	for _, line := range strings.Split(summary, "\n") {
 		line = strings.TrimSpace(line)
@@ -171,6 +176,34 @@ func checkpointSummaryLabel(scope, summary string, cap int) string {
 	}
 	label := "自动续接（" + strings.Join(strings.Fields(scope), " ") + "）：" + strings.Join(lines, "；")
 	return truncateIndexLabel(label, cap)
+}
+
+// Reuse section 8 without changing the original summary, ledger or model calls.
+// Older summaries and an empty retrieval section retain the existing fallback.
+func checkpointRetrievalClues(summary string) string {
+	inSection := false
+	var clues []string
+	for _, line := range strings.Split(summary, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "## 8.") && strings.Contains(line, "原始证据检索线索") {
+			inSection = true
+			continue
+		}
+		if !inSection {
+			continue
+		}
+		if strings.HasPrefix(line, "## ") || strings.HasPrefix(line, "</") {
+			break
+		}
+		line = strings.TrimSpace(strings.TrimLeft(line, "- *"))
+		if line != "" && line != "无" && line != "无。" && !strings.HasPrefix(line, "<") {
+			clues = append(clues, line)
+		}
+		if len(clues) == 4 {
+			break
+		}
+	}
+	return strings.Join(clues, "\n")
 }
 
 func truncateIndexLabel(text string, cap int) string {
@@ -188,10 +221,14 @@ func finalizeSummarizationMemory(msg adk.Message, originals []adk.Message, trans
 	msg = stripAnalysisFromSummarizationMessage(msg)
 	snapshot, err := writeSummarizationTranscriptSnapshot(transcriptPath, originals)
 	if err != nil && logger != nil {
-		logger.Warn("保存上下文证据快照失败", zap.Error(err))
+		if snapshot != "" {
+			logger.Warn("更新上下文兼容入口失败，原始快照仍可读取", zap.String("snapshot", snapshot), zap.Error(err))
+		} else {
+			logger.Warn("保存上下文证据快照失败", zap.Error(err))
+		}
 	}
-	// Only advertise an artifact that was successfully written.
-	if err == nil {
+	// Publish successful immutable evidence even if only its alias failed.
+	if snapshot != "" {
 		msg = appendTranscriptPathToSummarizationMessage(msg, snapshot)
 	}
 	text := ""

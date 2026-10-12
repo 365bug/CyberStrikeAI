@@ -278,3 +278,66 @@ func TestFallbackSnapshotDirectoryIsSeparatedByConversation(t *testing.T) {
 		}
 	}
 }
+
+func TestAliasWriteFailureStillPublishesImmutableSnapshot(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		t.Run(fmt.Sprintf("native=%v", native), func(t *testing.T) {
+			db, pid, cid := checkpointTestProject(t)
+			cfg := &config.Config{Project: config.ProjectConfig{Enabled: true}}
+			cfg.Database.Path = filepath.Join(t.TempDir(), "runtime.db")
+			cfg.OpenAI.Model = "gpt-4o"
+			cfg.OpenAI.MaxTotalTokens = 5000
+			emit := false
+			mwCfg := &config.MultiAgentEinoMiddlewareConfig{SummarizationEmitInternalEvents: &emit, SummarizationOutputReserveTokens: 1024}
+			ctx := context.Background()
+			base := filepath.Join(filepath.Dir(cfg.Database.Path), "conversation_artifacts", cid, "summarization")
+			if err := os.MkdirAll(base, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			// The immutable evidence can be saved, but the compatibility alias cannot be replaced.
+			if err := os.Mkdir(filepath.Join(base, "transcript.txt"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			original := []adk.Message{schema.SystemMessage("system"), schema.UserMessage(strings.Repeat("history ", 20000)), schema.UserMessage("continue")}
+			const summary = "<summary>usable continuation</summary>"
+			var after []adk.Message
+			if native {
+				mw, err := newEinoAgenticSummarizationMiddleware(ctx, &capturingAgenticChatModel{output: agenticAssistantTextMessage(summary)}, cfg, mwCfg, cid, db, pid, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, state, err := mw.BeforeModelRewriteState(ctx, &adk.TypedChatModelAgentState[*schema.AgenticMessage]{Messages: EinoMessagesToAgentic(original)}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after = AgenticMessagesToEino(state.Messages)
+			} else {
+				mw, err := newEinoSummarizationMiddleware(ctx, &capturingClassicChatModel{output: &schema.Message{Role: schema.Assistant, Content: summary, ResponseMeta: &schema.ResponseMeta{FinishReason: "stop"}}}, cfg, mwCfg, cid, db, pid, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, state, err := mw.BeforeModelRewriteState(ctx, &adk.ChatModelAgentState{Messages: original}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after = state.Messages
+			}
+			text := joinClassicMessageContent(after)
+			snapshots, err := filepath.Glob(filepath.Join(base, "snapshots", "transcript-*.txt"))
+			if err != nil || len(snapshots) != 1 {
+				t.Fatalf("snapshot missing or duplicated: %v %v", snapshots, err)
+			}
+			if !strings.Contains(text, "usable continuation") || !strings.Contains(text, snapshots[0]) || !strings.Contains(text, summarizationSnapshotHeading) {
+				t.Fatalf("valid evidence lost retrieval entry: %s", text)
+			}
+			body, err := os.ReadFile(snapshots[0])
+			if err != nil || !bytes.Equal(body, []byte(formatSummarizationTranscript(original))) {
+				t.Fatalf("evidence changed: %v", err)
+			}
+			facts, err := db.ListProjectFacts(pid, database.ProjectFactListFilter{}, 100, 0)
+			if err != nil || len(facts) != 1 || !strings.Contains(facts[0].Body, snapshots[0]) {
+				t.Fatalf("blackboard lost snapshot: %#v %v", facts, err)
+			}
+		})
+	}
+}

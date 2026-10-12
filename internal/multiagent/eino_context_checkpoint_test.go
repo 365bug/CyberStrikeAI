@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -41,7 +42,7 @@ func TestTranscriptSnapshotsPreserveEarlierEvidence(t *testing.T) {
 		t.Fatal("latest alias not updated")
 	}
 	stat, _ := os.Stat(before)
-	if stat.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && stat.Mode().Perm() != 0o600 {
 		t.Fatalf("snapshot permissions: %v", stat.Mode())
 	}
 	files, _ := filepath.Glob(filepath.Join(filepath.Dir(before), "transcript-*.txt"))
@@ -118,7 +119,7 @@ func TestFinalizeMemorySupportsMultipartSummaryAndReportsOnlySuccessfulWrites(t 
 	summary := &schema.Message{Role: schema.User, UserInputMultiContent: []schema.MessageInputPart{{Type: schema.ChatMessagePartTypeText, Text: "<analysis>internal</analysis><summary>keep important finding</summary>"}}}
 	out := finalizeSummarizationMemory(summary, original, filepath.Join(t.TempDir(), "transcript.txt"), db, pid, cid, "main", config.ProjectConfig{Enabled: true}, nil)
 	text := out.UserInputMultiContent[0].Text
-	if strings.Contains(text, "internal") || !strings.Contains(text, "snapshots/transcript-") || !strings.Contains(text, "get_project_fact(note/context-") {
+	if strings.Contains(text, "internal") || !strings.Contains(text, filepath.Join("snapshots", "transcript-")) || !strings.Contains(text, "get_project_fact(note/context-") {
 		t.Fatalf("continuation missing durable references: %s", text)
 	}
 	if !strings.Contains(summary.UserInputMultiContent[0].Text, "internal") {
@@ -209,5 +210,58 @@ func TestCheckpointIndexLabelStaysShortWithLargeSummarySetting(t *testing.T) {
 	label := checkpointSummaryLabel("main", "## findings\n- Important endpoint /api/check\n- "+strings.Repeat("raw output ", 1000), 24000)
 	if len([]rune(label)) > 200 || !strings.Contains(label, "/api/check") {
 		t.Fatalf("checkpoint reinjects long history or loses key hint: %s", label)
+	}
+}
+
+func TestSuccessfulEmptyFactIndexRemovesOldBlockButRetainsLedger(t *testing.T) {
+	db, pid, cid := checkpointTestProject(t)
+	if _, err := db.UpsertProjectFact(&database.ProjectFact{ProjectID: pid, FactKey: "finding/test", Summary: "OLD_INDEX_CONTENT"}); err != nil {
+		t.Fatal(err)
+	}
+	index, err := project.BuildFactIndexBlock(db, pid, config.ProjectConfig{Enabled: true}, cid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := buildOriginalUserIntentLedgerMessage([]adk.Message{schema.UserMessage("ONLY_AUTHORIZED_TARGET")}, 96000, 16000)
+	msgs := mergeMessageIntoLeadingSystem([]adk.Message{schema.SystemMessage("KEEP_CURRENT_SYSTEM\n" + index + "\nKEEP_SUFFIX")}, ledger)
+	out := refreshFactIndexInMessages(msgs, db, pid, config.ProjectConfig{Enabled: true, FactIndexMaxRunes: 30}, nil, cid)
+	if strings.Contains(out[0].Content, project.FactIndexSectionStartMarker) || strings.Contains(out[0].Content, "OLD_INDEX_CONTENT") || !strings.Contains(out[0].Content, "KEEP_CURRENT_SYSTEM") || !strings.Contains(out[0].Content, "KEEP_SUFFIX") {
+		t.Fatalf("empty build retained index or removed other context: %s", out[0].Content)
+	}
+	got := buildOriginalUserIntentLedgerMessage(out, 96000, 16000)
+	if got == nil || !strings.Contains(got.Content, "ONLY_AUTHORIZED_TARGET") {
+		t.Fatal("ledger lost on index removal")
+	}
+	// A failed build is different: retain the valid prior block.
+	failed := refreshFactIndexInMessages(msgs, db, "missing-project", config.ProjectConfig{Enabled: true, FactIndexMaxRunes: 30}, nil, cid)
+	if failed[0].Content != msgs[0].Content {
+		t.Fatal("database error discarded old context")
+	}
+	if !strings.Contains(msgs[0].Content, "OLD_INDEX_CONTENT") {
+		t.Fatal("input message mutated")
+	}
+}
+
+func TestCheckpointLabelUsesExistingEvidenceCluesWithoutChangingSummary(t *testing.T) {
+	const summary = "## 1. 授权范围与约束\n- authorized.example\n- COOKIE_SECRET\n- user method\n- user todo\n## 7. 当前进度、策略决策与下一步\n- progress\n## 8. 原始证据检索线索（追加）\n- authorized.example /login request Cookie clue\n- response 403 exact error\n"
+	label := checkpointSummaryLabel("main", summary, 10000)
+	if !strings.Contains(label, "/login") || !strings.Contains(label, "403") || strings.Contains(label, "COOKIE_SECRET") || strings.Contains(label, "user method") || len([]rune(label)) > 200 {
+		t.Fatalf("unhelpful or excessive index label: %s", label)
+	}
+	db, pid, cid := checkpointTestProject(t)
+	key, err := persistSummarizationCheckpoint(db, pid, cid, "main", summary, "", config.ProjectConfig{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact, err := db.GetProjectFactByKey(pid, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(fact.Body, summary) {
+		t.Fatal("index label changed original summary body")
+	}
+	fallback := checkpointSummaryLabel("main", "## 1. 授权范围\n- authorized.example\n## 8. 原始证据检索线索（追加）\n- 无", 1000)
+	if !strings.Contains(fallback, "authorized.example") {
+		t.Fatalf("empty-clue legacy fallback lost: %s", fallback)
 	}
 }

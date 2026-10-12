@@ -489,10 +489,8 @@ func refreshFactIndexInMessages(msgs []adk.Message, db *database.DB, projectID s
 		return msgs
 	}
 	freshIndex = strings.TrimSpace(freshIndex)
-	if freshIndex == "" {
-		return msgs
-	}
-
+	// A successful empty build means the old block must be removed. Errors
+	// above retain the previous index instead of silently discarding context.
 	changed := false
 	out := make([]adk.Message, len(msgs))
 	for i, msg := range msgs {
@@ -500,7 +498,13 @@ func refreshFactIndexInMessages(msgs []adk.Message, db *database.DB, projectID s
 			out[i] = msg
 			continue
 		}
-		newContent, ok := project.ReplaceFactIndexSection(msg.Content, freshIndex)
+		var newContent string
+		var ok bool
+		if freshIndex == "" {
+			newContent, ok = project.RemoveFactIndexSection(msg.Content)
+		} else {
+			newContent, ok = project.ReplaceFactIndexSection(msg.Content, freshIndex)
+		}
 		if !ok {
 			out[i] = msg
 			continue

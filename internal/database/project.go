@@ -14,7 +14,9 @@ var factKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`)
 
 // ValidateFactKey 校验事实 key（项目内唯一标识）。
 func ValidateFactKey(key string) error {
-	key = strings.TrimSpace(key)
+	if key != strings.TrimSpace(key) {
+		return fmt.Errorf("fact_key 不允许首尾空白")
+	}
 	if key == "" {
 		return fmt.Errorf("fact_key 不能为空")
 	}
@@ -116,9 +118,12 @@ func (db *DB) SaveContextCheckpoint(f *ProjectFact) error {
 	return nil
 }
 
+// Match strings.TrimSpace for legacy keys without migrating or rewriting them.
+const factKeyTrimCharacters = "\t\n\v\f\r \u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+
 func contextCheckpointScopeSQL(conversationID string) (string, []interface{}) {
-	return " AND (substr(fact_key, 1, ?) != ? OR (source_conversation_id = ? AND ? != ''))",
-		[]interface{}{len(ContextCheckpointKeyPrefix), ContextCheckpointKeyPrefix, strings.TrimSpace(conversationID), strings.TrimSpace(conversationID)}
+	return " AND (substr(trim(fact_key, ?), 1, ?) != ? OR (source_conversation_id = ? AND ? != ''))",
+		[]interface{}{factKeyTrimCharacters, len(ContextCheckpointKeyPrefix), ContextCheckpointKeyPrefix, strings.TrimSpace(conversationID), strings.TrimSpace(conversationID)}
 }
 
 // CreateProject 创建项目。

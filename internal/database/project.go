@@ -58,11 +58,34 @@ type ProjectFact struct {
 
 // ProjectFactListFilter 事实列表筛选。
 type ProjectFactListFilter struct {
-	Category               string
-	Confidence             string
-	Search                 string
-	RelatedVulnerabilityID string
-	ExcludeDeprecated      bool // 为 true 时排除 confidence=deprecated
+	Category                   string
+	Confidence                 string
+	Search                     string
+	RelatedVulnerabilityID     string
+	ExcludeDeprecated          bool // 为 true 时排除 confidence=deprecated
+	RestrictContextCheckpoints bool // MCP defaults: hide other/unknown conversation checkpoints before pagination.
+	ContextConversationID      string
+	SourceConversationID       string // Optional provenance filter; it does not widen project or memory scope.
+}
+
+// ContextCheckpointKeyPrefix is reserved for system-generated working memory.
+const ContextCheckpointKeyPrefix = "note/context-"
+
+// IsContextCheckpointKey distinguishes working memory from ordinary shared facts.
+func IsContextCheckpointKey(key string) bool {
+	return strings.HasPrefix(strings.TrimSpace(key), ContextCheckpointKeyPrefix)
+}
+
+// Conversation scope affects only automatic working memory, never ordinary
+// project facts. Unknown origins require an explicit historical read.
+func ContextCheckpointVisible(f *ProjectFact, conversationID string, includeHistory bool) bool {
+	return f != nil && (!IsContextCheckpointKey(f.FactKey) || includeHistory ||
+		(strings.TrimSpace(conversationID) != "" && f.SourceConversationID == strings.TrimSpace(conversationID)))
+}
+
+func contextCheckpointScopeSQL(conversationID string) (string, []interface{}) {
+	return " AND (substr(fact_key, 1, ?) != ? OR (source_conversation_id = ? AND ? != ''))",
+		[]interface{}{len(ContextCheckpointKeyPrefix), ContextCheckpointKeyPrefix, strings.TrimSpace(conversationID), strings.TrimSpace(conversationID)}
 }
 
 // CreateProject 创建项目。
@@ -336,12 +359,17 @@ func (db *DB) SetConversationProjectID(conversationID, projectID string) error {
 }
 
 // ListProjectFactsForIndex 列出用于黑板索引注入的事实（不含 deprecated，除非 includeDeprecated）。
-func (db *DB) ListProjectFactsForIndex(projectID string, includeDeprecated bool) ([]*ProjectFact, error) {
+func (db *DB) ListProjectFactsForIndex(projectID string, includeDeprecated bool, conversationIDs ...string) ([]*ProjectFact, error) {
 	query := `SELECT id, project_id, fact_key, category, summary, '', confidence,
 		COALESCE(source_conversation_id,''), COALESCE(source_message_id,''), pinned,
 		COALESCE(related_vulnerability_id,''), created_at, updated_at
 		FROM project_facts WHERE project_id = ?`
 	args := []interface{}{projectID}
+	if len(conversationIDs) > 0 {
+		clause, values := contextCheckpointScopeSQL(conversationIDs[0])
+		query += clause
+		args = append(args, values...)
+	}
 	if !includeDeprecated {
 		query += " AND confidence != 'deprecated'"
 	}
@@ -364,6 +392,15 @@ func (db *DB) ListProjectFacts(projectID string, filter ProjectFactListFilter, l
 		COALESCE(related_vulnerability_id,''), created_at, updated_at
 		FROM project_facts WHERE project_id = ?`
 	args := []interface{}{projectID}
+	if filter.RestrictContextCheckpoints {
+		clause, values := contextCheckpointScopeSQL(filter.ContextConversationID)
+		query += clause
+		args = append(args, values...)
+	}
+	if source := strings.TrimSpace(filter.SourceConversationID); source != "" {
+		query += " AND source_conversation_id = ?"
+		args = append(args, source)
+	}
 	if c := strings.TrimSpace(filter.Category); c != "" {
 		query += " AND category = ?"
 		args = append(args, c)

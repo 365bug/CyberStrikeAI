@@ -268,7 +268,7 @@ func newEinoSummarizationMiddleware(
 			}
 			out = mergeMessageIntoLeadingSystem(out, userLedger)
 			if appCfg != nil {
-				out = refreshFactIndexInMessages(out, db, projectID, appCfg.Project, logger)
+				out = refreshFactIndexInMessages(out, db, projectID, appCfg.Project, logger, conversationID)
 			}
 			return out, nil
 		},
@@ -473,7 +473,7 @@ func buildPlaintextSummarizationInput(
 }
 
 // refreshFactIndexInMessages 在 summarization 压缩后，用 DB 最新索引替换 system 中已有的项目黑板索引段。
-func refreshFactIndexInMessages(msgs []adk.Message, db *database.DB, projectID string, cfg config.ProjectConfig, logger *zap.Logger) []adk.Message {
+func refreshFactIndexInMessages(msgs []adk.Message, db *database.DB, projectID string, cfg config.ProjectConfig, logger *zap.Logger, conversationIDs ...string) []adk.Message {
 	if db == nil || !cfg.Enabled {
 		return msgs
 	}
@@ -481,7 +481,7 @@ func refreshFactIndexInMessages(msgs []adk.Message, db *database.DB, projectID s
 	if projectID == "" {
 		return msgs
 	}
-	freshIndex, err := project.BuildFactIndexBlock(db, projectID, cfg)
+	freshIndex, err := project.BuildFactIndexBlock(db, projectID, cfg, conversationIDs...)
 	if err != nil {
 		if logger != nil {
 			logger.Warn("summarization: 刷新项目黑板索引失败", zap.String("projectId", projectID), zap.Error(err))

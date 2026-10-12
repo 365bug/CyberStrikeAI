@@ -134,6 +134,10 @@ func TestSummarizationMiddlewaresAutomaticallySaveCheckpoint(t *testing.T) {
 	for _, native := range []bool{false, true} {
 		t.Run(fmt.Sprintf("native=%v", native), func(t *testing.T) {
 			db, pid, cid := checkpointTestProject(t)
+			_, err := db.UpsertProjectFact(&database.ProjectFact{ProjectID: pid, FactKey: "note/context-other", SourceConversationID: "different-conversation", Summary: "FOREIGN_PROGRESS", Body: "FOREIGN_COOKIE", Pinned: true})
+			if err != nil {
+				t.Fatal(err)
+			}
 			cfg := &config.Config{Project: config.ProjectConfig{Enabled: true}}
 			cfg.Database.Path = filepath.Join(t.TempDir(), "runtime.db")
 			cfg.OpenAI.Model = "gpt-4o"
@@ -177,14 +181,20 @@ func TestSummarizationMiddlewaresAutomaticallySaveCheckpoint(t *testing.T) {
 				after = state.Messages
 			}
 			facts, err := db.ListProjectFacts(pid, database.ProjectFactListFilter{}, 100, 0)
-			if err != nil || len(facts) != 1 {
+			if err != nil || len(facts) != 2 {
 				t.Fatalf("automatic checkpoint missing: %v %#v", err, facts)
 			}
-			if !strings.Contains(facts[0].Body, "/api/check") || strings.Contains(facts[0].Body, "scratchpad") {
-				t.Fatalf("wrong working memory: %s", facts[0].Body)
+			var checkpoint *database.ProjectFact
+			for _, f := range facts {
+				if f.SourceConversationID == cid {
+					checkpoint = f
+				}
+			}
+			if checkpoint == nil || !strings.Contains(checkpoint.Body, "/api/check") || strings.Contains(checkpoint.Body, "scratchpad") {
+				t.Fatalf("wrong working memory: %#v", checkpoint)
 			}
 			joined := joinClassicMessageContent(after)
-			if !strings.Contains(joined, facts[0].FactKey) || strings.Contains(joined, "（暂无事实）") {
+			if !strings.Contains(joined, checkpoint.FactKey) || strings.Contains(joined, "（暂无事实）") || strings.Contains(joined, "FOREIGN_PROGRESS") || strings.Contains(joined, "note/context-other") {
 				t.Fatalf("live index did not refresh after save: %s", joined)
 			}
 			snapshots, err := filepath.Glob(filepath.Join(filepath.Dir(cfg.Database.Path), "conversation_artifacts", cid, "summarization", "snapshots", "*.txt"))

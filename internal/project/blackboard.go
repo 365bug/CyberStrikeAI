@@ -28,7 +28,7 @@ const (
 )
 
 // BuildFactIndexBlock 为 Agent 系统提示生成项目黑板索引（key + summary + 关系边 + 攻击路径，不含 body）。
-func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectConfig) (string, error) {
+func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectConfig, conversationIDs ...string) (string, error) {
 	if db == nil || !cfg.Enabled {
 		return "", nil
 	}
@@ -42,11 +42,16 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 		return "", err
 	}
 
-	facts, err := db.ListProjectFactsForIndex(projectID, cfg.DefaultInjectDeprecated)
+	conversationID := ""
+	if len(conversationIDs) > 0 {
+		conversationID = strings.TrimSpace(conversationIDs[0])
+	}
+	facts, err := db.ListProjectFactsForIndex(projectID, cfg.DefaultInjectDeprecated, conversationID)
 	if err != nil {
 		return "", err
 	}
 	allEdges, _ := db.ListProjectFactEdgesByProject(projectID)
+	allEdges = FilterCheckpointEdges(allEdges, facts)
 	_, incomingByTarget := indexEdgeGroupMaps(allEdges)
 
 	maxRunes := cfg.FactIndexMaxRunesEffective()
@@ -87,6 +92,9 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 
 	for _, f := range facts {
 		line := fmt.Sprintf("- [%s] %s — %s (%s)", f.FactKey, f.Category, truncateIndexSummary(indexSingleLine(f.Summary), cfg.FactSummaryMaxRunesEffective()), f.Confidence)
+		if database.IsContextCheckpointKey(f.FactKey) {
+			line += " [当前会话工作记录]"
+		}
 		line += FormatFactIndexLinksHint(f.FactKey, incomingByTarget[f.FactKey])
 		line += "\n"
 		lineRunes := len([]rune(line))
@@ -110,6 +118,23 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 
 	b.WriteString(footer)
 	return wrapFactIndexBlock(b.String()), nil
+}
+
+// A hidden checkpoint must not reappear via a visible fact's relationship hint.
+func FilterCheckpointEdges(edges []*database.ProjectFactEdge, visibleFacts []*database.ProjectFact) []*database.ProjectFactEdge {
+	visible := make(map[string]bool)
+	for _, f := range visibleFacts {
+		visible[f.FactKey] = true
+	}
+	var out []*database.ProjectFactEdge
+	for _, e := range edges {
+		if database.IsContextCheckpointKey(e.SourceFactKey) && !visible[e.SourceFactKey] ||
+			database.IsContextCheckpointKey(e.TargetFactKey) && !visible[e.TargetFactKey] {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 func indexSingleLine(s string) string { return strings.Join(strings.Fields(s), " ") }

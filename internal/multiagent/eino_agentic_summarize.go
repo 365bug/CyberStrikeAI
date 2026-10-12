@@ -216,7 +216,7 @@ func newEinoAgenticSummarizationMiddleware(
 			}
 			out = mergeMessageIntoLeadingSystem(out, userLedger)
 			if appCfg != nil {
-				out = refreshFactIndexInMessages(out, db, projectID, appCfg.Project, logger)
+				out = refreshFactIndexInMessages(out, db, projectID, appCfg.Project, logger, conversationID)
 			}
 			return EinoMessagesToAgentic(out), nil
 		},

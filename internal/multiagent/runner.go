@@ -406,7 +406,7 @@ func RunDeepAgent(
 	var taskBlackboardSupplement string
 	if appCfg.Project.Enabled && db != nil {
 		if pid := strings.TrimSpace(projectID); pid != "" {
-			if block, err := project.BuildFactIndexBlock(db, pid, appCfg.Project); err == nil {
+			if block, err := project.BuildFactIndexBlock(db, pid, appCfg.Project, conversationID); err == nil {
 				taskBlackboardSupplement = strings.TrimSpace(block)
 			}
 		}

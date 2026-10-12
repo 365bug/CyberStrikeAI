@@ -55,7 +55,7 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 	_, incomingByTarget := indexEdgeGroupMaps(allEdges)
 
 	maxRunes := cfg.FactIndexMaxRunesEffective()
-	header := fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n", indexSingleLine(proj.Name), proj.ID)
+	header := fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n", indexField(proj.Name), proj.ID)
 	if len(facts) == 0 {
 		block := wrapFactIndexBlock(header + "（暂无事实）\n" + factIndexFooterEmpty)
 		if len([]rune(block)) <= maxRunes {
@@ -94,9 +94,9 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 		// Category and confidence are only defaulted, never validated, so either can
 		// carry a newline that would inject a fake index line into the system prompt.
 		line := fmt.Sprintf("- [%s] %s — %s (%s)", f.FactKey,
-			indexSingleLine(f.Category),
-			truncateIndexSummary(indexSingleLine(f.Summary), cfg.FactSummaryMaxRunesEffective()),
-			indexSingleLine(f.Confidence))
+			indexField(f.Category),
+			truncateIndexSummary(indexField(f.Summary), cfg.FactSummaryMaxRunesEffective()),
+			indexField(f.Confidence))
 		if database.IsContextCheckpointKey(f.FactKey) {
 			line += " [当前会话工作记录]"
 		}
@@ -142,7 +142,10 @@ func FilterCheckpointEdges(edges []*database.ProjectFactEdge, visibleFacts []*da
 	return out
 }
 
-func indexSingleLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+// indexField 压平自由文本事实字段：换行能伪造索引行，宿主定界符能提前闭合索引块。
+func indexField(s string) string {
+	return factIndexSafeText(strings.Join(strings.Fields(s), " "))
+}
 
 func truncateIndexSummary(s string, maxRunes int) string {
 	runes := []rune(s)

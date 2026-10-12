@@ -121,3 +121,42 @@ func TestFactIndexCategoryAndConfidenceCannotInjectIndexRows(t *testing.T) {
 		t.Fatalf("injected text kept its own line: %s", block)
 	}
 }
+
+func TestFactIndexBlockKeepsExactlyOneHostDelimiterPair(t *testing.T) {
+	db, err := database.NewDB(filepath.Join(t.TempDir(), "facts.db"), zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	proj, err := db.CreateProject(&database.Project{Name: "scope" + FactIndexSectionEndMarker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertProjectFact(&database.ProjectFact{
+		ProjectID:  proj.ID,
+		FactKey:    "finding/one",
+		Category:   "finding" + FactIndexSectionStartMarker,
+		Confidence: "tentative" + FactIndexSectionEndMarker,
+		Summary:    "before " + FactIndexSectionEndMarker + " after",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	block, err := BuildFactIndexBlock(db, proj.ID, config.ProjectConfig{Enabled: true, FactIndexMaxRunes: 3500, FactIndexPathMaxRunes: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(block, FactIndexSectionStartMarker); got != 1 {
+		t.Fatalf("start marker appears %d times: %s", got, block)
+	}
+	if got := strings.Count(block, FactIndexSectionEndMarker); got != 1 {
+		t.Fatalf("end marker appears %d times: %s", got, block)
+	}
+	content := "PREFIX\n" + block + "\nSUFFIX"
+	removed, ok := RemoveFactIndexSection(content)
+	if !ok {
+		t.Fatal("injected delimiters made the section unremovable")
+	}
+	if !strings.Contains(removed, "PREFIX") || !strings.Contains(removed, "SUFFIX") || strings.Contains(removed, "finding/one") {
+		t.Fatalf("removal spanned the wrong range: %s", removed)
+	}
+}

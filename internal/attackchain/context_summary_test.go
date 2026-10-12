@@ -246,7 +246,7 @@ func TestBuildAndCachedContextKeepConversationScopeAndGraphEvidence(t *testing.T
 			return
 		}
 		requests <- payload.Messages[1].Content
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{map[string]interface{}{"message": map[string]string{"content": `{"nodes":[{"id":"target","type":"target","label":"scope.example"},{"id":"scan","type":"action","label":"Actual scan","metadata":{"tool_name":"scan"}}],"edges":[{"source":"target","target":"scan","type":"leads_to"}],"context_summaries":[{"content":"MODEL_INVENTED_SUMMARY"}]}`}}}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{map[string]interface{}{"message": map[string]string{"content": `{"nodes":[{"id":"target","type":"target","label":"scope.example"},{"id":"scan","type":"action","label":"Actual scan","tool_call_id":"call-1","metadata":{"tool_name":"scan"}}],"edges":[{"source":"target","target":"scan","type":"leads_to"}],"context_summaries":[{"content":"MODEL_INVENTED_SUMMARY"}]}`}}}})
 	}))
 	t.Cleanup(server.Close)
 	b := NewBuilder(db, &config.OpenAIConfig{BaseURL: server.URL, APIKey: "test-only", Model: "gpt-4", MaxTotalTokens: 32000}, zap.NewNop())

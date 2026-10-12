@@ -49,6 +49,13 @@ func wrapFactIndexBlock(content string) string {
 	return FactIndexSectionStartMarker + "\n" + content + "\n" + FactIndexSectionEndMarker + "\n"
 }
 
+// factIndexSafeText 去掉事实文本里的宿主定界符。索引块按字面量定位起止，内容里
+// 出现同名注释会提前闭合块，把其余索引内容甩到系统提示的块外。
+func factIndexSafeText(s string) string {
+	s = strings.ReplaceAll(s, FactIndexSectionStartMarker, "")
+	return strings.ReplaceAll(s, FactIndexSectionEndMarker, "")
+}
+
 func factIndexSectionStart(content string) (int, bool) {
 	idx := strings.Index(content, FactIndexSectionStartMarker)
 	if idx < 0 {

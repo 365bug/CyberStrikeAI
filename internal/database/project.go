@@ -83,6 +83,39 @@ func ContextCheckpointVisible(f *ProjectFact, conversationID string, includeHist
 		(strings.TrimSpace(conversationID) != "" && f.SourceConversationID == strings.TrimSpace(conversationID)))
 }
 
+// SaveContextCheckpoint tests project binding in the same SQLite write statement,
+// so a concurrent conversation rebind cannot slip between a read and an upsert.
+func (db *DB) SaveContextCheckpoint(f *ProjectFact) error {
+	if f == nil || !IsContextCheckpointKey(f.FactKey) || strings.TrimSpace(f.SourceConversationID) == "" {
+		return fmt.Errorf("invalid context checkpoint")
+	}
+	if err := ValidateFactKey(f.FactKey); err != nil {
+		return err
+	}
+	now := time.Now()
+	result, err := db.Exec(`INSERT INTO project_facts
+		(id, project_id, fact_key, category, summary, body, confidence, source_conversation_id, pinned, created_at, updated_at)
+		SELECT ?, ?, ?, 'note', ?, ?, 'tentative', ?, 0, ?, ?
+		WHERE EXISTS (SELECT 1 FROM conversations WHERE id = ? AND project_id = ?)
+		ON CONFLICT(project_id, fact_key) DO UPDATE SET
+		category = 'note', summary = excluded.summary, body = excluded.body,
+		confidence = 'tentative', source_conversation_id = excluded.source_conversation_id,
+		pinned = 0, updated_at = excluded.updated_at`,
+		uuid.New().String(), f.ProjectID, f.FactKey, f.Summary, f.Body, f.SourceConversationID,
+		now, now, f.SourceConversationID, f.ProjectID)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return fmt.Errorf("checkpoint project does not match current conversation binding")
+	}
+	return nil
+}
+
 func contextCheckpointScopeSQL(conversationID string) (string, []interface{}) {
 	return " AND (substr(fact_key, 1, ?) != ? OR (source_conversation_id = ? AND ? != ''))",
 		[]interface{}{len(ContextCheckpointKeyPrefix), ContextCheckpointKeyPrefix, strings.TrimSpace(conversationID), strings.TrimSpace(conversationID)}

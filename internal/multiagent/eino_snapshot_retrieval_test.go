@@ -228,3 +228,53 @@ func TestLegacySHA256SnapshotRemainsReachableAndDeduplicated(t *testing.T) {
 		t.Fatalf("legacy snapshot not reused: %s %v", snapshot, err)
 	}
 }
+
+func TestFallbackSnapshotDirectoryIsSeparatedByConversation(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TMPDIR", root)
+	t.Setenv("TMP", root)
+	t.Setenv("TEMP", root)
+	for _, native := range []bool{false, true} {
+		for _, conv := range []string{"fallback-a", "fallback-b"} {
+			cfg := &config.Config{}
+			cfg.OpenAI.Model = "gpt-4o"
+			cfg.OpenAI.MaxTotalTokens = 5000
+			emit := false
+			mwCfg := &config.MultiAgentEinoMiddlewareConfig{SummarizationEmitInternalEvents: &emit, SummarizationOutputReserveTokens: 1024}
+			original := []adk.Message{schema.SystemMessage("system"), schema.UserMessage(strings.Repeat("old output ", 20000)), schema.UserMessage("continue authorized target")}
+			const summary = "<summary>kept progress</summary>"
+			ctx := context.Background()
+			var after []adk.Message
+			if native {
+				mw, err := newEinoAgenticSummarizationMiddleware(ctx, &capturingAgenticChatModel{output: agenticAssistantTextMessage(summary)}, cfg, mwCfg, conv, nil, "", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, state, err := mw.BeforeModelRewriteState(ctx, &adk.TypedChatModelAgentState[*schema.AgenticMessage]{Messages: EinoMessagesToAgentic(original)}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after = AgenticMessagesToEino(state.Messages)
+			} else {
+				model := &capturingClassicChatModel{output: &schema.Message{Role: schema.Assistant, Content: summary, ResponseMeta: &schema.ResponseMeta{FinishReason: "stop"}}}
+				mw, err := newEinoSummarizationMiddleware(ctx, model, cfg, mwCfg, conv, nil, "", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, state, err := mw.BeforeModelRewriteState(ctx, &adk.ChatModelAgentState{Messages: original}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after = state.Messages
+			}
+			want := filepath.Join(os.TempDir(), "cyberstrike-summarization", conv, "summarization", "snapshots")
+			if !strings.Contains(joinClassicMessageContent(after), want) {
+				t.Fatalf("missing conversation in fallback path: %s", joinClassicMessageContent(after))
+			}
+			files, err := filepath.Glob(filepath.Join(want, "*.txt"))
+			if err != nil || len(files) != 1 {
+				t.Fatalf("fallback snapshots not scoped/deduplicated: %v %v", files, err)
+			}
+		}
+	}
+}

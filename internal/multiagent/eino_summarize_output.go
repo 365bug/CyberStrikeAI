@@ -20,6 +20,7 @@ var (
 const (
 	userIntentLedgerStartMarker = "<original_user_intent_ledger>"
 	userIntentLedgerEndMarker   = "</original_user_intent_ledger>"
+	userIntentLedgerExtraKey    = "_csai_original_user_intent_entries"
 
 	summarizationSnapshotHeading             = "## 原始上下文快照"
 	summarizationTranscriptPathInstructionZh = "如果你需要压缩之前的具体细节（如精确的代码片段、错误消息或你生成的内容），完整的对话记录位于：%s"
@@ -139,7 +140,9 @@ func buildOriginalUserIntentLedgerMessage(originalMessages []adk.Message, maxRun
 	if strings.TrimSpace(ledger) == "" {
 		return nil
 	}
-	return schema.SystemMessage(wrapUserIntentLedger(ledger))
+	msg := schema.SystemMessage(wrapUserIntentLedger(ledger))
+	msg.Extra = map[string]interface{}{userIntentLedgerExtraKey: extractExistingUserIntentLedgerEntries(msg.Content)}
+	return msg
 }
 
 func mergeMessageIntoLeadingSystem(msgs []adk.Message, msg adk.Message) []adk.Message {
@@ -151,6 +154,13 @@ func mergeMessageIntoLeadingSystem(msgs []adk.Message, msg adk.Message) []adk.Me
 			continue
 		}
 		cloned := *existing
+		cloned.Extra = cloneAnyMap(existing.Extra)
+		if cloned.Extra == nil {
+			cloned.Extra = make(map[string]interface{})
+		}
+		for key, value := range msg.Extra {
+			cloned.Extra[key] = value
+		}
 		cloned.Content = strings.TrimSpace(strings.TrimSpace(cloned.Content) + "\n\n" + strings.TrimSpace(msg.Content))
 		out := make([]adk.Message, len(msgs))
 		copy(out, msgs)
@@ -231,17 +241,45 @@ func collectOriginalUserIntentEntries(msgs []adk.Message) []string {
 		if msg == nil {
 			continue
 		}
-		if isInternalSummarizationUserMessage(msg) {
-			continue
+		if msg.Role == schema.System {
+			for _, entry := range trustedUserIntentLedgerEntries(msg) {
+				add(entry)
+			}
 		}
-		for _, entry := range extractExistingUserIntentLedgerEntries(messageTextForLedger(msg)) {
-			add(entry)
-		}
-		if msg.Role == schema.User {
+		if msg.Role == schema.User && !isInternalSummarizationUserMessage(msg) {
 			add(adkUserMessageText(msg))
 		}
 	}
 	return entries
+}
+
+// Host-generated structured provenance takes precedence over any text labels.
+// Legacy support is limited to the host's complete trailing system ledger;
+// assistant/tool/user quotations and embedded blackboard snippets are not ledgers.
+func trustedUserIntentLedgerEntries(msg adk.Message) []string {
+	if value, present := msg.Extra[userIntentLedgerExtraKey]; present {
+		switch entries := value.(type) {
+		case []string:
+			return entries
+		case []interface{}:
+			var out []string
+			for _, entry := range entries {
+				if s, ok := entry.(string); ok {
+					out = append(out, s)
+				}
+			}
+			return out
+		default:
+			return nil
+		}
+	}
+	text := strings.TrimSpace(messageTextForLedger(msg))
+	header := "## 原始用户输入与约束账本（系统保真）\n" + userIntentLedgerStartMarker + "\n"
+	start := strings.LastIndex(text, header)
+	if start < 0 || start > 0 && text[start-1] != '\n' || !strings.HasSuffix(text, userIntentLedgerEndMarker) {
+		return nil
+	}
+	return extractExistingUserIntentLedgerEntries(text[start:])
 }
 
 // Eino deliberately transports generated summaries and preserved skill context

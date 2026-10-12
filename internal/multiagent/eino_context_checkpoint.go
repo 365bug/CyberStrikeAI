@@ -137,7 +137,7 @@ func persistSummarizationCheckpoint(db *database.DB, projectID, conversationID, 
 	if snapshot != "" {
 		body = appendSummarizationSection(body, summarizationTranscriptRetrievalSection(snapshot))
 	}
-	_, err = db.UpsertProjectFact(&database.ProjectFact{
+	err = db.SaveContextCheckpoint(&database.ProjectFact{
 		ProjectID: projectID, FactKey: key, Category: "note", Confidence: "tentative",
 		SourceConversationID: conversationID,
 		Summary:              checkpointSummaryLabel(memoryScope, summary, cfg.FactSummaryMaxRunesEffective()),

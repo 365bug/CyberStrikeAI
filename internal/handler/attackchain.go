@@ -136,11 +136,6 @@ func (h *AttackChainHandler) RegenerateAttackChain(c *gin.Context) {
 		return
 	}
 
-	// 删除旧的攻击链
-	if err := h.db.DeleteAttackChain(conversationID); err != nil {
-		h.logger.Warn("删除旧攻击链失败", zap.Error(err))
-	}
-
 	// 使用锁机制防止并发生成
 	lockInterface, _ := h.generatingLocks.LoadOrStore(conversationID, &sync.Mutex{})
 	lock := lockInterface.(*sync.Mutex)
@@ -152,6 +147,11 @@ func (h *AttackChainHandler) RegenerateAttackChain(c *gin.Context) {
 		return
 	}
 	defer lock.Unlock()
+
+	// 只有持锁的生成请求可以删除旧图；返回 409 的请求不得修改缓存。
+	if err := h.db.DeleteAttackChain(conversationID); err != nil {
+		h.logger.Warn("删除旧攻击链失败", zap.Error(err))
+	}
 
 	// 生成新的攻击链
 	h.logger.Info("重新生成攻击链", zap.String("conversationId", conversationID))

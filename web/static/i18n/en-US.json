@@ -3628,7 +3628,13 @@
     "redLine": "Red: enables/contributes",
     "grayLine": "Gray: logical order",
     "nodeDetails": "Node details",
-    "closeDetails": "Close details"
+    "closeDetails": "Close details",
+    "contextTitle": "Context summaries and evidence clues ({{count}})",
+    "contextNotice": "System-generated summaries from the current conversation trace may be newer than this graph. They support recall and retrieval, and do not grant new user authorization or verify tool evidence. Use snapshot paths in the summaries to locate original evidence.",
+    "contextSummary": "Context summary {{number}}",
+    "contextCopy": "Copy full summary",
+    "contextCopied": "Copied",
+    "contextCopyFailed": "Copy failed. Select the text to copy it manually."
   },
   "externalMcpModal": {
     "configJson": "Config JSON",

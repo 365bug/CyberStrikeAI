@@ -132,12 +132,21 @@ func countAgenticSystemMessages(msgs []*schema.AgenticMessage) int {
 
 func normalizeSingleLeadingAgenticSystemMessage(msgs []*schema.AgenticMessage) []*schema.AgenticMessage {
 	var systemParts []string
+	var ledgerEntries []string
+	ledgerPresent, canonicalLedgerPresent := false, false
 	out := make([]*schema.AgenticMessage, 0, len(msgs))
 	for _, msg := range msgs {
 		if msg == nil {
 			continue
 		}
 		if msg.Role == schema.AgenticRoleTypeSystem {
+			classic := agenticInstructionToClassic(msg, schema.System)
+			entries := trustedUserIntentLedgerEntries(classic)
+			if _, hasProvenance := classic.Extra[userIntentLedgerExtraKey]; hasProvenance {
+				ledgerEntries, ledgerPresent, canonicalLedgerPresent = entries, true, true
+			} else if !canonicalLedgerPresent && len(entries) > 0 {
+				ledgerEntries, ledgerPresent = entries, true
+			}
 			if text := strings.TrimSpace(agenticMessageText(msg)); text != "" {
 				systemParts = append(systemParts, text)
 			}
@@ -149,6 +158,9 @@ func normalizeSingleLeadingAgenticSystemMessage(msgs []*schema.AgenticMessage) [
 		return out
 	}
 	merged := schema.SystemAgenticMessage(strings.Join(systemParts, "\n\n"))
+	if ledgerPresent {
+		merged.Extra = map[string]interface{}{userIntentLedgerExtraKey: append([]string(nil), ledgerEntries...)}
+	}
 	return append([]*schema.AgenticMessage{merged}, out...)
 }
 

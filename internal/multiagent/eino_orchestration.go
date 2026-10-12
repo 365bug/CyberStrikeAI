@@ -263,16 +263,17 @@ func normalizeSingleLeadingSystemMessage(msgs []adk.Message, extraSystem string)
 	}
 	nonSystem := make([]adk.Message, 0, len(msgs))
 	var ledgerEntries []string
-	ledgerPresent := false
+	ledgerPresent, canonicalLedgerPresent := false, false
 	for _, msg := range msgs {
 		if msg == nil {
 			continue
 		}
 		if msg.Role == schema.System {
 			entries := trustedUserIntentLedgerEntries(msg)
-			if _, hasProvenance := msg.Extra[userIntentLedgerExtraKey]; hasProvenance || len(entries) > 0 {
-				ledgerEntries = entries
-				ledgerPresent = true
+			if _, hasProvenance := msg.Extra[userIntentLedgerExtraKey]; hasProvenance {
+				ledgerEntries, ledgerPresent, canonicalLedgerPresent = entries, true, true
+			} else if !canonicalLedgerPresent && len(entries) > 0 {
+				ledgerEntries, ledgerPresent = entries, true
 			}
 			if s := strings.TrimSpace(msg.Content); s != "" {
 				systemParts = append(systemParts, s)

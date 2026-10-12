@@ -16729,7 +16729,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     max-height: 360px;
     overflow: auto;
     font-size: 0.75rem;
-    font-family: var(--font-mono, monospace);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     line-height: 1.6;
     margin: 10px 0;
 }
@@ -17105,6 +17105,11 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 /* 激活态：隐藏图例的两个辅助 section（风险等级、连线含义），保留详情 */
 .attack-chain-sidebar.details-active
     .attack-chain-legend > .legend-section:not(.attack-chain-details) {
+    display: none !important;
+}
+
+/* 激活态：详情独占 sidebar 时一并收起压缩摘要卡，两者会争夺同一份高度 */
+.attack-chain-sidebar.details-active .attack-chain-context {
     display: none !important;
 }
 
@@ -28107,6 +28112,16 @@ html[data-theme="dark"] .vulnerability-details code.vuln-detail-field-value {
         border-left: none;
         border-top: 1px solid rgba(0, 0, 0, 0.06);
         order: 2;
+    }
+
+    /* 侧栏整体只有 200px，摘要正文再留 360px 会变成嵌套滚动 */
+    .attack-chain-context {
+        margin: 8px 8px 0;
+        padding: 10px;
+    }
+
+    .attack-chain-context-body {
+        max-height: 140px;
     }
     
     .attack-chain-visualization-area {

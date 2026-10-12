@@ -3634,7 +3634,8 @@
     "contextSummary": "Context summary {{number}}",
     "contextCopy": "Copy full summary",
     "contextCopied": "Copied",
-    "contextCopyFailed": "Copy failed. Select the text to copy it manually."
+    "contextCopyFailed": "Copy failed. Select the text to copy it manually.",
+    "regenerateFailed": "Regeneration failed: {{message}}"
   },
   "externalMcpModal": {
     "configJson": "Config JSON",

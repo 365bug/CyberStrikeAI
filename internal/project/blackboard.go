@@ -91,7 +91,12 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 	omitted := 0
 
 	for _, f := range facts {
-		line := fmt.Sprintf("- [%s] %s — %s (%s)", f.FactKey, f.Category, truncateIndexSummary(indexSingleLine(f.Summary), cfg.FactSummaryMaxRunesEffective()), f.Confidence)
+		// Category and confidence are only defaulted, never validated, so either can
+		// carry a newline that would inject a fake index line into the system prompt.
+		line := fmt.Sprintf("- [%s] %s — %s (%s)", f.FactKey,
+			indexSingleLine(f.Category),
+			truncateIndexSummary(indexSingleLine(f.Summary), cfg.FactSummaryMaxRunesEffective()),
+			indexSingleLine(f.Confidence))
 		if database.IsContextCheckpointKey(f.FactKey) {
 			line += " [当前会话工作记录]"
 		}
@@ -111,7 +116,7 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 		b.WriteString(factIndexOmissionNotice(omitted))
 	}
 
-	if pathSection := BuildFactPathOverviewSection(allEdges, indexedKeys, pathMaxRunes-1); len(indexedKeys) > 0 && pathSection != "" {
+	if pathSection := BuildFactPathOverviewSection(allEdges, indexedKeys, pathMaxRunes-1); pathSection != "" {
 		b.WriteString("\n")
 		b.WriteString(pathSection)
 	}

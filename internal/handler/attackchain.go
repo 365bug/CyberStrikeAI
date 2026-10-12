@@ -71,8 +71,8 @@ func (h *AttackChainHandler) GetAttackChain(c *gin.Context) {
 	// 先尝试从数据库加载（如果已生成过）
 	openAIConfig := h.getOpenAIConfig()
 	builder := attackchain.NewBuilder(h.db, openAIConfig, h.logger)
-	chain, err := builder.LoadChainFromDatabase(conversationID)
-	if err == nil && len(chain.Nodes) > 0 {
+	chain, err := builder.LoadCachedChainIfPresent(conversationID)
+	if err == nil && chain != nil {
 		// 如果已存在，直接返回
 		h.logger.Info("返回已存在的攻击链", zap.String("conversationId", conversationID))
 		c.JSON(http.StatusOK, chain)
@@ -94,8 +94,8 @@ func (h *AttackChainHandler) GetAttackChain(c *gin.Context) {
 	defer lock.Unlock()
 
 	// 再次检查是否已生成（可能在等待锁的过程中已经生成完成）
-	chain, err = builder.LoadChainFromDatabase(conversationID)
-	if err == nil && len(chain.Nodes) > 0 {
+	chain, err = builder.LoadCachedChainIfPresent(conversationID)
+	if err == nil && chain != nil {
 		h.logger.Info("返回已存在的攻击链（在锁等待期间已生成）", zap.String("conversationId", conversationID))
 		c.JSON(http.StatusOK, chain)
 		return

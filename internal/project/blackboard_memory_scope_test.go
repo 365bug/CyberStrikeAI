@@ -62,3 +62,45 @@ func TestBlackboardWorkingMemoryIsConversationScopedIncludingEdges(t *testing.T)
 		t.Fatalf("scope destroyed or globally hid stored notes: %v %v", raw, err)
 	}
 }
+
+func TestBodyLinkMirrorNeverCarriesConversationWorkingMemory(t *testing.T) {
+	db, err := database.NewDB(filepath.Join(t.TempDir(), "bodyleak.db"), zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	p, err := db.CreateProject(&database.Project{Name: "scope"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []*database.ProjectFact{
+		{ProjectID: p.ID, FactKey: "finding/shared", Category: "finding", Summary: "shared result", Body: "RAW_SHARED"},
+		{ProjectID: p.ID, FactKey: "note/context-b", SourceConversationID: "b", Summary: "progress b"},
+		{ProjectID: p.ID, FactKey: "target/other", Category: "target", Summary: "ordinary source"},
+	} {
+		if _, err := db.UpsertProjectFact(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.AddProjectFactEdge(p.ID, database.ProjectFactEdgeInput{To: "finding/shared", Type: "supports"}, "note/context-b", "b"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.AddProjectFactEdge(p.ID, database.ProjectFactEdgeInput{To: "finding/shared", Type: "discovered_on"}, "target/other", ""); err != nil {
+		t.Fatal(err)
+	}
+	in, err := db.ListIncomingProjectFactEdges(p.ID, "finding/shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// get_project_fact returns this body verbatim, and bodies have no scope filter.
+	body := SyncBodyLinksSection("RAW_SHARED", in)
+	if !strings.Contains(body, "target/other") {
+		t.Fatalf("body mirror dropped an ordinary relation: %s", body)
+	}
+	if strings.Contains(body, "note/context-b") {
+		t.Fatalf("body mirror leaked conversation-scoped working memory: %s", body)
+	}
+	if parsed := ParseLinksFromBody(body); len(parsed) != 1 || parsed[0].From != "target/other" {
+		t.Fatalf("body mirror re-materialized a hidden edge: %#v from %s", parsed, body)
+	}
+}

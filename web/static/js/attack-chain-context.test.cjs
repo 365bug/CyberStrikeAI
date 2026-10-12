@@ -42,7 +42,16 @@ function harness(options = {}) {
     const window = {
         t(key, values) {
             let translated = key.split('.').reduce((value, part) => value && value[part], dictionaries[language]) || key;
-            Object.entries(values || {}).forEach(([name, value]) => { translated = translated.replace('{{' + name + '}}', String(value)); });
+            // Mirror real i18next: interpolated values are escaped unless the caller opts out.
+            const escape = !(values && values.interpolation && values.interpolation.escapeValue === false);
+            Object.entries(values || {}).forEach(([name, value]) => {
+                if (name === 'interpolation') return;
+                const text = escape
+                    ? String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\//g, '&#x2F;')
+                    : String(value);
+                translated = translated.replace('{{' + name + '}}', text);
+            });
             return translated;
         }, attackChainOriginalData: null
     };
@@ -119,6 +128,17 @@ test('language changes retain expansion and original content while translating g
     assert.equal(entry.children[1].textContent, '原始正文');
     assert.equal(entry.open, true);
     assert.equal(h.ids.get('attack-chain-context').open, true);
+});
+
+test('re-rendering the same conversation keeps the card expanded, clear still collapses', () => {
+    const h = harness();
+    h.api.render(chain('first pass'));
+    h.ids.get('attack-chain-context').open = true;
+    h.api.render(chain('second pass'));
+    assert.equal(h.ids.get('attack-chain-context').open, true);
+    assert.equal(h.entries()[0].children[1].textContent, 'second pass');
+    h.api.clear();
+    assert.equal(h.ids.get('attack-chain-context').open, false);
 });
 
 test('clipboard restrictions use the text fallback and failures retain selectable content', async () => {
@@ -216,6 +236,26 @@ test('current errors clear context and display server text without HTML executio
     h.runtime.exportAttackChain('svg');
     assert.equal(alerts.length, 1);
     assert.equal(h.timers.length, 0);
+});
+
+test('failure text stays readable instead of showing i18next escape entities', async () => {
+    const upstream = '生成攻击链失败: Post "https://api.example.com/v1/chat/completions": context deadline exceeded';
+    const h = harness({ apiFetch: async () => ({ ok: false, status: 500, json: async () => ({ error: upstream }) }) });
+    await h.runtime.loadAttackChain('A');
+    const shown = h.ids.get('attack-chain-container').children[0].textContent;
+    assert.equal(shown.includes(upstream), true);
+    assert.equal(/&#x2F;|&quot;|&amp;|&#39;/.test(shown), false);
+    assert.equal(h.sinks.some(html => html.includes('api.example.com')), false);
+});
+
+test('regenerate failure reports its own message key unescaped', async () => {
+    const upstream = 'AI生成失败: Post "https://api.example.com/v1/chat/completions": EOF';
+    const h = harness({ apiFetch: async () => ({ ok: false, status: 500, json: async () => ({ error: upstream }) }) });
+    await h.runtime.regenerateAttackChain();
+    const shown = h.ids.get('attack-chain-container').children[0].textContent;
+    assert.equal(shown.startsWith('重新生成失败: '), true);
+    assert.equal(shown.includes(upstream), true);
+    assert.equal(h.sinks.some(html => html.includes('api.example.com')), false);
 });
 
 test('regenerate 409 refreshes after completion while superseded timers stay inert', async () => {

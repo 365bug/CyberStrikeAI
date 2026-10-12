@@ -67,8 +67,10 @@
     }
 
     function render(chainData) {
-        clear();
         const card = document.getElementById('attack-chain-context');
+        // A 409 refresh re-renders the same conversation; keep the card's open state.
+        const wasOpen = !!card && card.open;
+        clear();
         const contents = document.getElementById('attack-chain-context-content');
         if (!card || !contents) return;
 
@@ -117,6 +119,7 @@
             contents.appendChild(entry);
         });
         card.hidden = false;
+        card.open = wasOpen;
     }
 
     document.addEventListener('languagechange', () => labels.forEach(refresh => refresh()));

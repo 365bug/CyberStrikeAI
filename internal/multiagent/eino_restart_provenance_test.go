@@ -112,7 +112,10 @@ func TestRunRestartRendersHumanLedgerWithinCurrentBudgets(t *testing.T) {
 		t.Fatalf("fresh ledger missing: %#v", out)
 	}
 	entries := trustedUserIntentLedgerEntries(out[0])
-	if len(entries) != 1 || !strings.Contains(entries[0], "ONLY_AUTHORIZED_SCOPE") || utf8RuneLen(entries[0]) > 131 || utf8RuneLen(out[0].Content) > 512 {
+	mw := args.MiddlewareConfig
+	if len(entries) != 1 || !strings.Contains(entries[0], "ONLY_AUTHORIZED_SCOPE") ||
+		utf8RuneLen(entries[0]) > mw.SummarizationUserIntentLedgerEntryMaxRunes ||
+		utf8RuneLen(out[0].Content) > mw.SummarizationUserIntentLedgerMaxRunes {
 		t.Fatalf("current budget ignored: %#v", entries)
 	}
 	if anchor.Content != "OLD_INSTRUCTION" || len(anchor.Extra[userIntentLedgerExtraKey].([]string)[0]) < 1000 {

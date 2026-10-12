@@ -398,8 +398,8 @@ func sanitizeUserIntentLedgerEntry(s string, maxRunes int) string {
 	s = strings.ReplaceAll(strings.TrimSpace(s), userIntentLedgerStartMarker, "[ledger-start]")
 	s = strings.ReplaceAll(s, userIntentLedgerEndMarker, "[ledger-end]")
 	s = strings.Join(strings.Fields(s), " ")
-	if maxRunes > 0 && utf8RuneLen(s) > maxRunes {
-		return truncateUserIntentLedgerRunes(s, maxRunes) + "..."
+	if maxRunes > 0 {
+		return fitUserIntentLedgerText(s, maxRunes)
 	}
 	return s
 }

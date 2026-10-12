@@ -3647,7 +3647,8 @@
     "contextSummary": "Сводка контекста {{number}}",
     "contextCopy": "Копировать полную сводку",
     "contextCopied": "Скопировано",
-    "contextCopyFailed": "Не удалось скопировать. Выделите текст и скопируйте вручную."
+    "contextCopyFailed": "Не удалось скопировать. Выделите текст и скопируйте вручную.",
+    "regenerateFailed": "Не удалось сформировать заново: {{message}}"
   },
   "externalMcpModal": {
     "configJson": "JSON конфигурации",

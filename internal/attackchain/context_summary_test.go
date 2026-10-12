@@ -66,7 +66,7 @@ func TestContextSummariesRequireMetadataAndDeduplicateWithoutReadingFiles(t *tes
 		t.Fatalf("summary extraction changed sources/content: %#v", summaries)
 	}
 	for i, summary := range summaries {
-		if summary.Provenance != "system_generated_summary" || summary.Title == "" || summary.ID == "" {
+		if summary.Provenance != "system_generated_summary" || summary.ID == "" {
 			t.Fatalf("missing source labels: %#v", summary)
 		}
 		if again := b.contextSummariesFromTrace(trace); again[i].ID != summary.ID {
@@ -127,6 +127,33 @@ func TestEmptyAttackChainsStillExposeCurrentContextWithoutModelCalls(t *testing.
 				t.Fatalf("empty chain lost context or tried a model call: %#v, %v", chain, err)
 			}
 		})
+	}
+}
+
+func TestCachedChainProbeSkipsTraceWorkUntilAGraphExists(t *testing.T) {
+	db := newContextSummaryTestDB(t)
+	conv, err := db.CreateConversation("probe", database.ConversationCreateMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveContextSummaryTestTrace(t, db, conv.ID, []agent.ChatMessage{{Role: "user", Content: "PROBE_SUMMARY", SummarizationKind: "summary"}})
+	b := &Builder{db: db, logger: zap.NewNop()}
+	// Polling while a graph is being generated must not parse the trace at all.
+	if chain, probeErr := b.LoadCachedChainIfPresent(conv.ID); probeErr != nil || chain != nil {
+		t.Fatalf("probe without a cached graph must return no chain: %#v, %v", chain, probeErr)
+	}
+	if err := db.SaveAttackChainNode(conv.ID, "probe-node", "target", "scope.example", "", "{}", 0); err != nil {
+		t.Fatal(err)
+	}
+	chain, err := b.LoadCachedChainIfPresent(conv.ID)
+	if err != nil || chain == nil || len(chain.Nodes) != 1 || len(chain.ContextSummaries) != 1 || chain.ContextSummaries[0].Content != "PROBE_SUMMARY" {
+		t.Fatalf("probe with a cached graph lost nodes or context: %#v, %v", chain, err)
+	}
+	// Skipping the read must not turn into freezing context for the Builder's lifetime.
+	saveContextSummaryTestTrace(t, db, conv.ID, []agent.ChatMessage{{Role: "user", Content: "PROBE_SUMMARY_NEXT", SummarizationKind: "summary"}})
+	chain, err = b.LoadCachedChainIfPresent(conv.ID)
+	if err != nil || chain == nil || len(chain.ContextSummaries) != 1 || chain.ContextSummaries[0].Content != "PROBE_SUMMARY_NEXT" {
+		t.Fatalf("cached probe served stale context: %#v, %v", chain, err)
 	}
 }
 

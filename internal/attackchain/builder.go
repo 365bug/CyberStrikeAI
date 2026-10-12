@@ -835,6 +835,19 @@ func (b *Builder) saveChain(conversationID string, nodes []Node, edges []Edge) e
 	return nil
 }
 
+// LoadCachedChainIfPresent 返回 nil 表示尚无缓存图。探测缓存的请求（含生成中的
+// 5 秒轮询）会丢弃整个 chain，不该为此解析可能达数 MB 的 last_react_input。
+func (b *Builder) LoadCachedChainIfPresent(conversationID string) (*Chain, error) {
+	nodes, err := b.db.LoadAttackChainNodes(conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("加载攻击链节点失败: %w", err)
+	}
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return b.LoadChainFromDatabase(conversationID)
+}
+
 // LoadChainFromDatabase 从数据库加载攻击链
 func (b *Builder) LoadChainFromDatabase(conversationID string) (*Chain, error) {
 	nodes, err := b.db.LoadAttackChainNodes(conversationID)
@@ -857,7 +870,7 @@ func (b *Builder) LoadChainFromDatabase(conversationID string) (*Chain, error) {
 	return &Chain{
 		Nodes:            nodes,
 		Edges:            edges,
-		ContextSummaries: b.loadContextSummaries(conversationID),
+		ContextSummaries: b.contextSummaries(conversationID),
 	}, nil
 }
 

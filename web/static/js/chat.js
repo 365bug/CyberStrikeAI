@@ -6956,6 +6956,12 @@ function renderAttackChainError(container, message) {
     container.replaceChildren(errorElement);
 }
 
+// window.t escapes interpolation for innerHTML; these go to textContent, so opt out.
+function attackChainFailureText(key, fallbackPrefix, message) {
+    if (typeof window.t !== 'function') return fallbackPrefix + message;
+    return window.t(key, { message, interpolation: { escapeValue: false } });
+}
+
 // 显示攻击链模态框
 async function showAttackChain(conversationId) {
     // 如果当前显示的对话ID不同，或者没有在加载，允许打开
@@ -7104,7 +7110,7 @@ async function loadAttackChain(conversationId) {
         if (!isCurrentAttackChainRequest(conversationId, requestSequence)) return;
         resetAttackChainContext();
         renderAttackChainError(document.getElementById('attack-chain-container'),
-            typeof window.t === 'function' ? window.t('chat.loadFailed', { message: error.message }) : '加载失败: ' + error.message);
+            attackChainFailureText('chat.loadFailed', '加载失败: ', error.message));
     } finally {
         // 恢复重新生成按钮
         const regenerateBtn = document.querySelector('button[onclick="regenerateAttackChain()"]');
@@ -8282,7 +8288,7 @@ async function regenerateAttackChain() {
         if (!isCurrentAttackChainRequest(savedConversationId, requestSequence)) return;
         resetAttackChainContext();
         renderAttackChainError(container,
-            typeof window.t === 'function' ? window.t('chat.loadFailed', { message: error.message }) : '重新生成失败: ' + error.message);
+            attackChainFailureText('attackChainModal.regenerateFailed', '重新生成失败: ', error.message));
     } finally {
         finishAttackChainRequest(savedConversationId, requestSequence);
 

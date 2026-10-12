@@ -3622,7 +3622,8 @@
     "contextSummary": "压缩摘要 {{number}}",
     "contextCopy": "复制完整摘要",
     "contextCopied": "已复制",
-    "contextCopyFailed": "复制失败，可选中文本手动复制。"
+    "contextCopyFailed": "复制失败，可选中文本手动复制。",
+    "regenerateFailed": "重新生成失败: {{message}}"
   },
   "externalMcpModal": {
     "configJson": "配置JSON",

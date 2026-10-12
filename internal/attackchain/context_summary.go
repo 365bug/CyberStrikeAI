@@ -15,12 +15,13 @@ import (
 // cached graph may predate this context; no snapshot files are opened here.
 type ContextSummary struct {
 	ID         string `json:"id"`
-	Title      string `json:"title"`
 	Content    string `json:"content"`
 	Provenance string `json:"provenance"`
 }
 
-func (b *Builder) loadContextSummaries(conversationID string) []ContextSummary {
+// contextSummaries always rereads the conversation's latest trace: a cached
+// graph may predate it, so context must not be frozen for the Builder's lifetime.
+func (b *Builder) contextSummaries(conversationID string) []ContextSummary {
 	trace, _, err := b.db.GetAgentTrace(conversationID)
 	if err != nil {
 		b.logger.Warn("加载攻击链上下文摘要失败", zap.String("conversationId", conversationID), zap.Error(err))
@@ -50,7 +51,6 @@ func (b *Builder) contextSummariesFromTrace(trace string) []ContextSummary {
 		hash := sha256.Sum256([]byte(msg.Content))
 		summaries = append(summaries, ContextSummary{
 			ID:         "summary-" + hex.EncodeToString(hash[:])[:16],
-			Title:      "系统生成的压缩摘要",
 			Content:    msg.Content,
 			Provenance: "system_generated_summary",
 		})

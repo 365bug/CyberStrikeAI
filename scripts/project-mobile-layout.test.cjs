@@ -194,3 +194,72 @@ test('mobile project page scrolls its final row above the bottom navigation', as
         }
     } finally { await browser.close(); }
 });
+
+test('mobile facts keep badges and actions inside their columns while scrolling horizontally', async () => {
+    const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
+    try {
+        for (const width of [320, 393, 767]) {
+            const context = await browser.newContext({viewport: {width, height: 900}, isMobile: true, hasTouch: true});
+            try {
+                const page = await context.newPage();
+                await page.setContent(`<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div class="container"><header>CyberStrikeAI</header><div id="page-projects" class="page active"><div class="page-content projects-page-layout">${markup}</div></div></div></body></html>`);
+                for (const file of ['style.css', 'mobile.css']) await page.addStyleTag({content: read(`web/static/css/${file}`)});
+                await page.addScriptTag({content: source});
+                const mobileSource = read('web/static/js/mobile-ui.js');
+                const wrapTables = mobileSource.slice(mobileSource.indexOf('    function wrapTables('), mobileSource.indexOf('    /* ---------------------------------------------------------------------\n       11.'));
+                await page.addScriptTag({content: `const isMobile = () => true;
+                    const $$ = (selector, root) => Array.from(root.querySelectorAll(selector));
+                    const el = (tag, cls) => Object.assign(document.createElement(tag), {className: cls});
+                    ${wrapTables}
+                    wrapTables(document);`});
+                await page.evaluate(() => {
+                    currentProjectId = 'fixture-project';
+                    document.querySelector('.projects-detail').classList.add('has-project');
+                    document.querySelector('#projects-detail-inner').hidden = false;
+                    window.apiFetch = async () => ({ok: true, json: async () => [
+                        {id:'note', fact_key:'note/automatic-continuation', category:'note', summary:'自动续接的项目记录 '.repeat(10), body:'详细记录', confidence:'tentative', updated_at:'2026-10-12T10:00:00Z'},
+                        {id:'finding', fact_key:'finding/8080/exposure', category:'finding', summary:'8080 / exposed service', body:'## Steps\n1. curl http://target:8080\n## Request\nGET /', confidence:'confirmed', updated_at:'2026-10-12T10:00:00Z', link_counts:{incoming:2,outgoing:10}},
+                    ]});
+                    refreshProjectHeaderStats = () => {};
+                    window.showEditFactModal = () => { window.actionClicked = 'edit'; };
+                    window.viewProjectFactBody = () => { window.actionClicked = 'details'; };
+                });
+                for (const locale of ['zh-CN', 'en-US', 'ru-RU']) {
+                    await page.evaluate(dict => {
+                        window.t = key => key.split('.').reduce((v, k) => v?.[k], dict) || key;
+                        document.querySelectorAll('thead [data-i18n]').forEach(el => { el.textContent = window.t(el.dataset.i18n); });
+                    }, JSON.parse(read(`web/static/i18n/${locale}.json`)));
+                    await page.evaluate(() => loadProjectFacts());
+                    for (const theme of ['light', 'dark']) {
+                        const label = `${width}px ${locale} ${theme}`;
+                        await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+                        const layout = await page.evaluate(() => {
+                            const table = document.querySelector('#project-panel-facts table');
+                            return {
+                                width:table.getBoundingClientRect().width,
+                                badCells: [...table.querySelectorAll('thead th, tbody td')].filter(cell => {
+                                    const r = cell.getBoundingClientRect();
+                                    return [...cell.children].some(child => {
+                                        const c = child.getBoundingClientRect();
+                                        return c.left < r.left - 1 || c.right > r.right + 1;
+                                    });
+                                }).map(cell => cell.className || cell.textContent),
+                                sticky: getComputedStyle(table.querySelector('td.col-actions')).position,
+                            };
+                        });
+                        assert.ok(layout.width >= 1200, `${label}: eight columns are squeezed to the phone width`);
+                        assert.deepEqual(layout.badCells, [], `${label}: badges or actions escape their cells`);
+                        assert.notEqual(layout.sticky, 'sticky', `${label}: action column overlays fact data`);
+                        const scroller = page.locator('#project-panel-facts .projects-table-wrap');
+                        await scroller.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+                        for (const [selector, action] of [['.projects-action-btn--edit', 'edit'], ['.projects-action-btn--view', 'details']]) {
+                            await page.locator(`#project-facts-tbody ${selector}`).first().tap({timeout: 3000});
+                            assert.equal(await page.evaluate(() => window.actionClicked), action, `${label}: ${action} is unreachable`);
+                        }
+                        await scroller.evaluate(el => { el.scrollLeft = 0; });
+                    }
+                }
+            } finally { await context.close(); }
+        }
+    } finally { await browser.close(); }
+});

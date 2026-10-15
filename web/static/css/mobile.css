@@ -2162,6 +2162,48 @@ body.m-panel-open .chat-input-container {
         overscroll-behavior-y: auto;
     }
 
+    /* The project wrapper already owns scrolling; the generic mobile wrapper
+       must not add a second scrollbar or negative gutters inside the card. */
+    #page-projects .projects-table-wrap > .m-table-scroll {
+        overflow: visible;
+        margin: 0;
+        padding: 0;
+        background: none;
+    }
+
+    /* Eight fact columns need readable widths. Keep one horizontal scroll area
+       and let actions scroll with their row instead of covering other cells. */
+    #page-projects #project-panel-facts .data-table--projects {
+        width: 1440px;
+        min-width: 1440px;
+    }
+
+    #page-projects #project-panel-facts th:nth-child(1) { width: 160px; }
+    #page-projects #project-panel-facts th:nth-child(2) { width: 120px; }
+    #page-projects #project-panel-facts th:nth-child(3) { width: 280px; }
+    #page-projects #project-panel-facts th:nth-child(4) { width: 100px; }
+    #page-projects #project-panel-facts th:nth-child(5) { width: 120px; }
+    #page-projects #project-panel-facts th:nth-child(6) { width: 140px; }
+    #page-projects #project-panel-facts th:nth-child(7) { width: 160px; }
+    #page-projects #project-panel-facts th:nth-child(8) { width: 360px; }
+
+    #page-projects #project-panel-facts .data-table--projects .col-actions {
+        position: static;
+        max-width: none;
+        box-shadow: none;
+    }
+
+    #page-projects #project-panel-facts .col-actions .projects-table-actions {
+        flex-wrap: wrap;
+    }
+
+    #page-projects #project-panel-facts :is(.projects-category, .projects-fact-badge, .projects-confidence) {
+        max-width: 100%;
+        box-sizing: border-box;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
     #page-projects #project-panel-assets .data-table--projects {
         height: auto;
     }

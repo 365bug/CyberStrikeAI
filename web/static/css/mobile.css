@@ -2121,6 +2121,62 @@ body.m-panel-open .chat-input-container {
         overflow: visible !important;
     }
 
+    /* Projects: one vertical scroller must fit between the page heading and
+       bottom navigation. Desktop viewport minimums and nested flex scrollers
+       otherwise put the final rows outside the clipped mobile page. */
+    #page-projects .page-content.projects-page-layout {
+        display: block;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    #page-projects .projects-sidebar-card {
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        margin-bottom: 12px;
+    }
+
+    #page-projects .projects-list {
+        max-height: 220px;
+    }
+
+    #page-projects .projects-detail,
+    #page-projects .projects-detail-inner,
+    #page-projects .projects-panel,
+    #page-projects .projects-table-wrap,
+    #page-projects .projects-settings-layout {
+        flex: none;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+    }
+
+    #page-projects .projects-panel,
+    #page-projects .projects-settings-layout {
+        overflow: visible;
+    }
+
+    #page-projects .projects-table-wrap {
+        overflow-x: auto;
+        overscroll-behavior-y: auto;
+    }
+
+    #page-projects #project-panel-assets .data-table--projects {
+        height: auto;
+    }
+
+    #page-projects #project-panel-assets .data-table--projects tbody {
+        flex: none;
+        overflow: visible;
+    }
+
+    #page-projects .project-fact-graph-layout {
+        flex: none;
+        height: 360px;
+        max-height: none;
+    }
+
     /* 21.5 C2 会话「重置」按钮实测 24x44，横向点不中 */
     #page-c2-sessions button,
     .c2-sessions-page button {

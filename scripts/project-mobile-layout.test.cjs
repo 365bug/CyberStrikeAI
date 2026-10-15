@@ -98,6 +98,7 @@ test('project headers contain their content and all tabs receive mobile taps', a
                             }, tab, { timeout: 1000 }), `${label}: ${tab} failed to switch`);
                         }
                     }
+
                 }
             } finally {
                 await context.close();
@@ -106,4 +107,90 @@ test('project headers contain their content and all tabs receive mobile taps', a
     } finally {
         await browser.close();
     }
+});
+
+// Unlike the header-only fixture above, this uses the entire project page inside
+// the actual flex shell, including its fixed heading, project list and bottom bar.
+test('mobile project page scrolls its final row above the bottom navigation', async () => {
+    const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
+    try {
+        for (const [width, height, visibleHeight] of [[320, 568, 568], [393, 852, 700], [430, 932, 780], [767, 600, 500]]) {
+            const context = await browser.newContext({ viewport: { width, height }, isMobile: true, hasTouch: true });
+            try {
+                const page = await context.newPage();
+                const projectPage = await page.evaluate(template => new DOMParser().parseFromString(template, 'text/html').querySelector('#page-projects').outerHTML, template);
+                await page.setContent(`<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div class="container"><header><div class="header-content">CyberStrikeAI</div></header><div class="main-layout"><div class="content-area">${projectPage}</div></div></div><nav id="m-tabbar">底部导航</nav></body></html>`);
+                for (const file of ['style.css', 'mobile.css']) await page.addStyleTag({ content: read(`web/static/css/${file}`) });
+                await page.evaluate(visibleHeight => {
+                    document.documentElement.style.setProperty('--m-app-height', `${visibleHeight}px`);
+                    document.documentElement.style.setProperty('--m-safe-bottom', '20px');
+                    document.querySelector('#page-projects').classList.add('active');
+                    document.querySelector('.projects-detail').classList.add('has-project');
+                    document.querySelector('#projects-detail-inner').hidden = false;
+                    document.querySelector('#projects-detail-title').textContent = 'Long project name / 项目名称 '.repeat(6);
+                    document.querySelector('#projects-list').innerHTML = '<div class="projects-list-item">项目一</div>'.repeat(3);
+                    document.querySelector('#projects-pagination').textContent = '1–3/3　1/1　每页 50';
+                }, visibleHeight);
+                await page.addScriptTag({ content: `let currentProjectTab = 'facts';
+                    ${['Facts', 'FactGraph', 'Assets', 'Conversations', 'Vulnerabilities'].map(name => `function loadProject${name}() {}`).join('\n')}
+                    ${switchTab}` });
+                for (const theme of ['light', 'dark']) {
+                    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+                    for (const rowCount of [1, 35]) {
+                        for (const tab of ['facts', 'assets', 'conversations', 'vulns']) {
+                            const label = `${width}x${height}/${visibleHeight} ${theme} ${tab} ${rowCount} rows`;
+                            await page.evaluate(({tab, rowCount}) => {
+                                window.switchProjectTab(tab);
+                                const panel = document.querySelector(`#project-panel-${tab}`);
+                                const cells = panel.querySelectorAll('thead th').length;
+                                panel.querySelector('tbody').innerHTML = Array.from({length: rowCount}, (_, i) => `<tr><td><button type="button" ${i === rowCount - 1 ? 'data-last-row' : ''} onclick="window.lastRowClicked=true">${i + 1}</button></td>${'<td>test</td>'.repeat(cells - 1)}</tr>`).join('');
+                                const scroller = document.querySelector('.projects-page-layout');
+                                scroller.scrollTop = scroller.scrollHeight;
+                            }, {tab, rowCount});
+                            if (rowCount === 35 && tab === 'conversations' && theme === 'light') {
+                                await page.evaluate(() => { document.querySelector('.projects-page-layout').scrollTop = 0; });
+                                const bounds = await page.locator('.projects-page-layout').boundingBox();
+                                await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height - 20);
+                                await page.mouse.wheel(0, 500);
+                                await page.waitForFunction(() => document.querySelector('.projects-page-layout').scrollTop > 0);
+                                await page.evaluate(() => {
+                                    const scroller = document.querySelector('.projects-page-layout');
+                                    scroller.scrollTop = scroller.scrollHeight;
+                                });
+                            }
+                            const result = await page.evaluate(tab => {
+                                const scroller = document.querySelector('.projects-page-layout');
+                                const row = document.querySelector(`#project-panel-${tab} [data-last-row]`);
+                                const r = row.getBoundingClientRect();
+                                const area = scroller.getBoundingClientRect();
+                                const bar = document.querySelector('#m-tabbar').getBoundingClientRect();
+                                return {areaBottom: area.bottom, barTop: bar.top, rowTop: r.top, rowBottom: r.bottom, areaTop: area.top,
+                                    hit: row.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2))};
+                            }, tab);
+                            assert.ok(result.areaBottom <= result.barTop + 1, `${label}: page scroller extends under bottom bar ${JSON.stringify(result)}`);
+                            assert.ok(result.rowTop >= result.areaTop && result.rowBottom <= result.areaBottom, `${label}: final row is clipped ${JSON.stringify(result)}`);
+                            assert.ok(result.hit, `${label}: final row cannot receive a tap`);
+                            await page.evaluate(() => { window.lastRowClicked = false; });
+                            await page.locator(`#project-panel-${tab} [data-last-row]`).tap();
+                            assert.equal(await page.evaluate(() => window.lastRowClicked), true, `${label}: final row tap failed`);
+                        }
+                    }
+                    for (const tab of ['graph', 'settings']) {
+                        const result = await page.evaluate(tab => {
+                            window.switchProjectTab(tab);
+                            const scroller = document.querySelector('.projects-page-layout');
+                            scroller.scrollTop = scroller.scrollHeight;
+                            const footer = document.querySelector(tab === 'graph' ? '.project-fact-graph-footer' : '.projects-settings-footer');
+                            const r = footer.getBoundingClientRect();
+                            const area = scroller.getBoundingClientRect();
+                            return {visible: r.top >= area.top && r.bottom <= area.bottom,
+                                graphHeight: document.querySelector('.project-fact-graph-layout').getBoundingClientRect().height};
+                        }, tab);
+                        assert.ok(result.visible, `${width}px ${theme} ${tab}: footer is clipped`);
+                        if (tab === 'graph') assert.ok(result.graphHeight >= 240, `${width}px ${theme}: graph canvas collapsed`);
+                    }
+                }
+            } finally { await context.close(); }
+        }
+    } finally { await browser.close(); }
 });

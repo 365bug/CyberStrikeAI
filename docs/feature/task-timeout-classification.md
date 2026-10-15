@@ -24,3 +24,12 @@ Confirmed by the user's request to fix the identified defect and merge main.
 Introduce a package-local predicate using the task context's Err(), which reports DeadlineExceeded only when that context's deadline expires. Do not use the returned operation error or an arbitrary cancellation cause as evidence of task budget exhaustion.
 
 Replace the four task-level OR checks with this predicate. Child timeouts follow the existing failed/error path with original error diagnostics and existing trace persistence. Real task expiry follows the unchanged timeout path. No new event schema or retry policy. No change to the 600-minute interactive or 6-hour batch budgets.
+
+## F3 — Implementation plan
+
+1. Add the shared predicate and update four handler call sites.
+2. Add deterministic context tests (past deadlines, child contexts, cancellation causes) plus batch handler regression coverage for status/persistence.
+3. Run targeted regression tests, affected package suites, and git diff --check; review the diff and update CHANGELOG.md.
+4. Commit and push each phase; merge only after checks pass and remote main is rechecked. No release or deployment requested.
+
+Rollback: revert the fix commit; no data migration. Customer-specific fault attribution remains a separate evidence gap.

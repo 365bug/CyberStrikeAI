@@ -256,12 +256,13 @@ c2:
   enabled: true
 project:
   enabled: true
+  # 项目续接另有最多 6500 字符补充预算；工作文件候选清单另有最多 4000 字符预算
   fact_index_max_runes: 65000
 ```
 
 - `c2.enabled`：关闭后不启动 C2 监听器，也不注册 C2 MCP 工具。
 - WebShell 连接配置存 SQLite，没有单独的主配置开关。
-- `project` 控制跨对话事实黑板注入预算。
+- `project` 控制跨对话事实黑板注入预算。[项目续聊与成果复用](project-resume.md) 说明脚本登记、测试结果与续接流程。
 
 ## 机器人
 

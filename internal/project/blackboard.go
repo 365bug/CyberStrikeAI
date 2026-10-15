@@ -48,9 +48,10 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 	}
 	allEdges, _ := db.ListProjectFactEdgesByProject(projectID)
 	_, incomingByTarget := indexEdgeGroupMaps(allEdges)
+	resume := buildResumeSection(db, projectID, facts)
 
 	if len(facts) == 0 {
-		return wrapFactIndexBlock(fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n（暂无事实）\n%s", proj.Name, proj.ID, factIndexFooterEmpty)), nil
+		return wrapFactIndexBlock(fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n（暂无事实）\n%s", proj.Name, proj.ID, factIndexFooterEmpty+"\n\n"+resume)), nil
 	}
 
 	sortFactsForIndex(facts)
@@ -95,5 +96,6 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 	}
 
 	b.WriteString(footer)
+	b.WriteString("\n\n" + resume)
 	return wrapFactIndexBlock(b.String()), nil
 }

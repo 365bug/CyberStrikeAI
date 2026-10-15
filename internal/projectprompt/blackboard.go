@@ -103,7 +103,7 @@ func FactRecordingBlackboardSection(coordinatorDelegate bool) string {
 
 // FactRecordingSubAgentSection 子代理边渗透边记录（无工具时输出待落库条目）。
 func FactRecordingSubAgentSection() string {
-	return "## 边渗透边记录\n\n" + factRecordingIncrementalRhythmBuiltin(false, true) + "\n"
+	return "## 边渗透边记录\n\n" + ProjectResultRecordingGuidance() + "\n\n" + factRecordingIncrementalRhythmBuiltin(false, true) + "\n"
 }
 
 // FactRecordingBlackboardSectionMarkdown 与 FactRecordingBlackboardSection 等价的 Markdown（工具名为字面量，供 agents/*.md）。

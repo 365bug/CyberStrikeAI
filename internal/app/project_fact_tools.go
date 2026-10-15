@@ -52,6 +52,7 @@ func registerProjectFactTools(mcpServer *mcp.Server, db *database.DB, cfg *confi
 			"边渗透边记录：每确认新认知（端口/入口/凭据/可利用点）后立即调用，同 fact_key 覆盖更新，勿等会话结束。" +
 			"禁止仅写结论：summary 须含什么+在哪+如何验证；body 须含攻击链/请求响应/命令等复现细节。" +
 			"发现类建议 fact_key 为 finding|chain|exploit|poc/<slug>，category 对应 finding|chain|exploit|poc，body 按攻击链模板填写。" +
+			"脚本成果用 category=note、artifact/<slug>，body 记工作目录相对路径、依赖、调用方式与成功证据；测试结果用 category=note、test/<slug>，body 记已测条件、证据及复测触发条件，阴性结论勿用 deprecated。" +
 			"环境类用 target|auth|infra|business/<slug>。同 fact_key 覆盖更新。需当前对话已绑定项目。",
 		ShortDescription: "写入/更新项目事实（含攻击链 body）",
 		InputSchema: map[string]interface{}{

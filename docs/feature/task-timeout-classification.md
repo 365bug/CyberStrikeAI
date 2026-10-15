@@ -33,3 +33,9 @@ Replace the four task-level OR checks with this predicate. Child timeouts follow
 4. Commit and push each phase; merge only after checks pass and remote main is rechecked. No release or deployment requested.
 
 Rollback: revert the fix commit; no data migration. Customer-specific fault attribution remains a separate evidence gap.
+
+## F4 — Implementation
+
+Added `taskDeadlineExceeded`, based on task context Err rather than operation error or cancellation cause. Single-agent, multi-agent, role workflow and batch task paths now use it. Existing terminal error details, trace persistence and retry policy are unchanged.
+
+Regression proof: before the fix, `TestBatchTaskDeadlineClassification` failed for both child DeadlineExceeded and wrapped HTTP timeout (got timeout, wanted failed). After the fix, targeted tests pass, including real expiry, unrelated returned error after expiry, custom deadline causes and user cancellation.

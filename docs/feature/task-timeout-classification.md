@@ -47,3 +47,11 @@ Regression proof: before the fix, `TestBatchTaskDeadlineClassification` failed f
 - `git diff --check`: passed.
 - Batch regression verifies finish status, queue failure and preservation of the original diagnostic in SQLite messages; context tests verify child timeout isolation, deadline expiry and cancellation semantics.
 - No customer environment reproduction or deployment performed. The customer-specific original timeout source is still unknown; the deterministic classification defect is fixed.
+
+## F6 — Review and merge readiness
+
+- Reviewed all four call sites: each receives the task context created for its own execution budget; checks occur before timeout cleanup. Local errors now follow existing failed/error paths.
+- Actual deadline expiry remains recognized even with a custom cause; a cancellation carrying a child timeout is no longer treated as exhausted task budget.
+- Scope is four predicate substitutions plus a small shared helper and regression tests. No dependency, schema, public API, replay policy or task budget change.
+- Added Unreleased/Fixed changelog entry. Implementation commit: `5ff781bd`; verification commit: `54213f82`.
+- Merge is explicitly authorized by the user. Plan: re-fetch origin, fast-forward main if unchanged, push without force and verify remote equality. No deployment or release tag.

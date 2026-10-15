@@ -174,7 +174,9 @@
    3. 顶部应用栏
    -------------------------------------------------------------------------- */
 @media (max-width: 767.98px) {
-    header {
+    /* Only the application bar has a fixed height and overlays page content.
+       Nested headers (e.g. project details/settings) must grow with their content. */
+    .container > header {
         height: var(--m-appbar-h);
         min-height: var(--m-appbar-h);
         padding: 0 var(--m-gutter);
@@ -874,6 +876,15 @@
         min-height: var(--m-touch);
         padding: 10px 12px;
         border-radius: 10px;
+    }
+
+    /* Preserve the fact search icon gutter after the generic mobile input padding. */
+    .projects-fact-filter-field--search input {
+        padding-left: 34px;
+    }
+
+    .projects-fact-search-icon {
+        bottom: calc((var(--m-touch) - 16px) / 2);
     }
 
     textarea {
@@ -3047,10 +3058,10 @@ html[data-theme="dark"] {
 
 @media (max-width: 767.98px) {
     /* 25.1 顶栏 / 底栏：透出材质 + 发丝分隔线。
-       顶栏必须写成 html[data-theme] header：style.css 用同一条特异性给暗色塞了
+       顶栏必须带 html[data-theme]：style.css 用主题选择器给暗色塞了
        不透明渐变，只写 header 会在暗色下丢掉材质（实测 background 被压成渐变）。 */
-    header,
-    html[data-theme] header {
+    .container > header,
+    html[data-theme] .container > header {
         background: var(--m-material-solid);
         border-bottom: 1px solid var(--m-hairline);
         box-shadow: none;
@@ -3063,8 +3074,8 @@ html[data-theme="dark"] {
     }
 
     @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-        header,
-        html[data-theme] header {
+        .container > header,
+        html[data-theme] .container > header {
             background: var(--m-material);
             -webkit-backdrop-filter: saturate(180%) blur(20px);
             backdrop-filter: saturate(180%) blur(20px);

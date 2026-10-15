@@ -18,3 +18,9 @@ Confirmed by the user's request to fix the identified defect and merge main.
 - R3: Cancellation must not be reclassified as deadline expiry, including cancellation whose cause wraps DeadlineExceeded.
 - R4: Keep existing failure diagnostics, bounded execution limits, and cancellation behavior. This fix does not promise automatic continuation after every local failure or blindly replay tools.
 - Acceptance: regression tests distinguish child timeout, task expiry, cancellation and wrapped HTTP errors; affected packages pass; main includes the reviewed change.
+
+## F2 — Design
+
+Introduce a package-local predicate using the task context's Err(), which reports DeadlineExceeded only when that context's deadline expires. Do not use the returned operation error or an arbitrary cancellation cause as evidence of task budget exhaustion.
+
+Replace the four task-level OR checks with this predicate. Child timeouts follow the existing failed/error path with original error diagnostics and existing trace persistence. Real task expiry follows the unchanged timeout path. No new event schema or retry policy. No change to the 600-minute interactive or 6-hour batch budgets.

@@ -39,3 +39,11 @@ Rollback: revert the fix commit; no data migration. Customer-specific fault attr
 Added `taskDeadlineExceeded`, based on task context Err rather than operation error or cancellation cause. Single-agent, multi-agent, role workflow and batch task paths now use it. Existing terminal error details, trace persistence and retry policy are unchanged.
 
 Regression proof: before the fix, `TestBatchTaskDeadlineClassification` failed for both child DeadlineExceeded and wrapped HTTP timeout (got timeout, wanted failed). After the fix, targeted tests pass, including real expiry, unrelated returned error after expiry, custom deadline causes and user cancellation.
+
+## F5 — Verification
+
+- `go test ./internal/handler -run 'Test(BatchTaskDeadlineClassification|TaskDeadlineExceededContextOwnership)' -count=1`: passed after previously demonstrating the defect.
+- `go test ./internal/handler ./internal/multiagent ./internal/workflow`: all three packages passed (17.789s, 17.230s, 2.545s).
+- `git diff --check`: passed.
+- Batch regression verifies finish status, queue failure and preservation of the original diagnostic in SQLite messages; context tests verify child timeout isolation, deadline expiry and cancellation semantics.
+- No customer environment reproduction or deployment performed. The customer-specific original timeout source is still unknown; the deterministic classification defect is fixed.

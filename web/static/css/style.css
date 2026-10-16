@@ -16689,6 +16689,63 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     background: rgba(15, 23, 42, 0.3);
 }
 
+.attack-chain-context {
+    margin: 14px 14px 0;
+    padding: 12px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+}
+
+.attack-chain-context[hidden] {
+    display: none;
+}
+
+.attack-chain-context summary {
+    cursor: pointer;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.attack-chain-context-notice {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    margin: 10px 0;
+}
+
+.attack-chain-context-entry {
+    border-top: 1px solid var(--border-color);
+    margin-top: 10px;
+    padding-top: 10px;
+}
+
+.attack-chain-context-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 360px;
+    overflow: auto;
+    font-size: 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    line-height: 1.6;
+    margin: 10px 0;
+}
+
+.attack-chain-context-copy {
+    font-size: 0.75rem;
+    padding: 5px 8px;
+}
+
+.attack-chain-context-copy-status {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-top: 6px;
+}
+
 .attack-chain-toolbar {
     padding: 14px 18px;
     border-bottom: 1px solid rgba(15, 23, 42, 0.07);
@@ -17048,6 +17105,11 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 /* 激活态：隐藏图例的两个辅助 section（风险等级、连线含义），保留详情 */
 .attack-chain-sidebar.details-active
     .attack-chain-legend > .legend-section:not(.attack-chain-details) {
+    display: none !important;
+}
+
+/* 激活态：详情独占 sidebar 时一并收起压缩摘要卡，两者会争夺同一份高度 */
+.attack-chain-sidebar.details-active .attack-chain-context {
     display: none !important;
 }
 
@@ -28050,6 +28112,16 @@ html[data-theme="dark"] .vulnerability-details code.vuln-detail-field-value {
         border-left: none;
         border-top: 1px solid rgba(0, 0, 0, 0.06);
         order: 2;
+    }
+
+    /* 侧栏整体只有 200px，摘要正文再留 360px 会变成嵌套滚动 */
+    .attack-chain-context {
+        margin: 8px 8px 0;
+        padding: 10px;
+    }
+
+    .attack-chain-context-body {
+        max-height: 140px;
     }
     
     .attack-chain-visualization-area {

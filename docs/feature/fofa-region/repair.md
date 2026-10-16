@@ -50,3 +50,9 @@ REQ-003 / AC-003：返回的 region 可导入资产 province，兼容已有 prov
 
 代码提交：0c0d4a53；验证记录：945627e9。已核对修复 diff：兼容转换位于其他提供商分流之后，响应字段使用规范化后的同一列表，结果与字段对齐；内部资产模型和数据库无需迁移。CHANGELOG.md Unreleased/Fixed 已记录用户场景和兼容行为。
 分支 codex/fix-fofa-region 各阶段记录已提交并推送 origin；本阶段完成后同样推送。可供合并评审，未创建 PR、未合并 main、未发布或部署。线上生效须后续合并及部署。
+
+## Main 集成记录
+
+2026-10-16 用户明确要求推送 main。先同步 origin/main 4ca8b7d3，再以 ee5e4dd7 无冲突合入修复分支；相对最新 main 仅保留本修复范围。
+集成后重新执行完整 `go test ./internal/handler -count=1`（通过，16.536s）、前端相关 16 项测试（全通过）、两个修改 JS 文件语法及 `git diff --check origin/main...HEAD`（通过）。
+将本记录提交后快进本地 main，并正常推送 origin/main；不使用强制推送，不发布版本或部署服务。

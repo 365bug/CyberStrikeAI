@@ -1,5 +1,7 @@
 # Token 用量监控：调研与实现
 
+[English](../en-US/token-usage-monitoring.md)
+
 调研时间：2026-10-11。
 
 ## 调研结论

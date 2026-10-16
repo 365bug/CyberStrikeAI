@@ -64,6 +64,8 @@ CyberStrikeAI documentation is organized by user journey. Start with deployment,
 - [Agents and Roles](en-US/agent-and-role-guide.md)
 - [Skills](en-US/skills-guide.md)
 - [Eino Multi-Agent](en-US/MULTI_AGENT_EINO.md)
+- [Blackboard and Context Memory](en-US/blackboard-context-memory.md)
+- [Agent Finalization](en-US/agent-finalization-best-practices.md)
 - [Workflows](en-US/workflow-graph.md)
 - [Tool Call Guard](en-US/tool-call-guard.md)
 - [Tool Execution Governance](en-US/tool-execution-governance.md)
@@ -72,6 +74,8 @@ CyberStrikeAI documentation is organized by user journey. Start with deployment,
 ### Feature guides
 
 - [Asset Management](en-US/asset-management.md)
+- [Resuming Project Tasks](en-US/project-resume.md)
+- [Token Usage Analysis](en-US/token-usage-monitoring.md)
 - [Knowledge Base](en-US/knowledge-base.md)
 - [RBAC Administration](en-US/rbac.md)
 - [Robot / Chatbot](en-US/robot.md)
@@ -98,11 +102,5 @@ CyberStrikeAI documentation is organized by user journey. Start with deployment,
 
 - 公开文档面向用户和贡献者，保留使用指南、稳定接口与架构说明、兼容性说明和发布记录。内部任务阶段记录、对话确认、一次性核查表和本地验证流水账应保存在仓库外，不作为产品文档提交。
 - Public docs serve users and contributors: usage guides, stable API and architecture references, compatibility notes, and release records. Keep internal task journals, conversation approvals, one-off review sheets, and local verification logs outside the repository.
-- 中英文目录以各语言索引为准。仅有中文版本的指南会在下方明确标注，英文译文尚未提供。
-
-### Additional guides (Chinese only)
-
-- [Agent finalization](zh-CN/agent-finalization-best-practices.md)
-- [Blackboard and context memory](zh-CN/blackboard-context-memory.md)
-- [Resuming project tasks](zh-CN/project-resume.md)
-- [Token usage analysis](zh-CN/token-usage-monitoring.md)
+- 中英文指南使用相同文件名，并提供语言切换链接；各语言索引覆盖对应的全部指南。
+- Chinese and English guides use matching filenames and language-switch links; each locale index covers all guides in that language.

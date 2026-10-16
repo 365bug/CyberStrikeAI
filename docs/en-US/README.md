@@ -13,6 +13,7 @@
 
 - [Architecture](architecture.md) · [Security Model](security-model.md) · [RBAC](rbac.md)
 - [Agents and Roles](agent-and-role-guide.md) · [Skills](skills-guide.md) · [Eino Multi-Agent](MULTI_AGENT_EINO.md)
+- [Tool Call Guard](tool-call-guard.md)
 - [Workflows](workflow-graph.md) · [Tool Execution Governance](tool-execution-governance.md) · [HITL Best Practices](hitl-best-practices.md)
 
 ## Feature guides
@@ -30,3 +31,12 @@
 
 - [Developer Guide](developer-guide.md) · [Plugin Development](plugin-development.md) · [Frontend i18n](frontend-i18n.md)
 - [Testing](testing.md) · [Contributing](contributing-guide.md) · [Release Process](release-process.md)
+
+## Additional guides (Chinese only)
+
+English translations of these guides are not yet available:
+
+- [Agent finalization](../zh-CN/agent-finalization-best-practices.md)
+- [Blackboard and context memory](../zh-CN/blackboard-context-memory.md)
+- [Resuming project tasks](../zh-CN/project-resume.md)
+- [Token usage analysis](../zh-CN/token-usage-monitoring.md)

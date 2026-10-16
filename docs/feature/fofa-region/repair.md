@@ -29,3 +29,9 @@ REQ-003 / AC-003：返回的 region 可导入资产 province，兼容已有 prov
 新增独立 Go 字段规范化辅助文件；handler 加调用点，修改默认值；前端配置、HTML 和工具说明定点替换；资产映射加 region。
 验证：Go 模拟服务检查真实 outbound fields 并返回按序行，覆盖默认、旧别名、重复和结果映射；Node 验证 FOFA 预设以及对象/数组资产导入，保留旧数据及 Quake 行为。执行现有 handler、前端相关测试和语法、diff 检查。
 回退：撤销本分支代码提交，无数据迁移。真实 API 查询会消耗外部账户额度，本次采用合同模拟验证，不使用真实凭据。
+
+## F4 实施记录
+
+已修正后端、JS、HTML 默认和 FOFA 字段预设；独立 normalizeFofaFields 在 FOFA 分支转换 province、清理重复字段并保持请求/响应顺序。空白 fields 同空值使用默认值。旧表单可由后端兼容，无需清空浏览器存储；保留旧 FOFA 默认字段识别，避免其他提供商恢复表单时误用 FOFA 字段。
+资产导入读取 region，并兼容 province、location.province_cn；工具字段说明同步更新为 region/asn/org。
+已通过 FOFA 和其他提供商定向 Go handler 测试、16 项 Node 测试、JS 语法及 diff 检查。新增测试最初因 Node VM 提取函数的结束标记拼写错误失败，修正测试加载边界后通过；未掩盖运行错误。完整 handler 包测试另行记录于 F5。

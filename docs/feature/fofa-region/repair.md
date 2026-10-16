@@ -17,3 +17,9 @@ REQ-001 / AC-001：默认 FOFA 信息收集只请求受支持返回字段，省�
 REQ-002 / AC-002：旧表单或 API 请求包含 province 时可继续查询，字段与行值顺序一致。
 REQ-003 / AC-003：返回的 region 可导入资产 province，兼容已有 province 和 Quake 省份结果。
 不改变查询语法、数据库结构、其他提供商字段、错误状态处理；不发布或部署。无待用户决策。
+
+## F2 接口与数据流
+
+沿用 POST /api/fofa/search。仅 FOFA 将返回字段别名 province 转成 region；去除重复字段，保持首次出现顺序；请求和响应 fields 使用同一规范化列表，因此结果映射不偏移。其他提供商字段不变。
+前端和 HTML 默认及预设使用 region；FOFA 情报预设的 as_number/as_organization 同属错误返回字段，改用官方 asn/org。工具说明同步更新。资产导入优先 region，再兼容 province、location.province_cn。
+兼容转换只针对返回字段，不修改查询表达式。参考 https://fofa.info/api。

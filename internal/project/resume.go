@@ -9,8 +9,8 @@ import (
 	"cyberstrike-ai/internal/projectprompt"
 )
 
-// The continuation supplement has its own fixed budget, separate from the
-// configurable fact index. Keep it inside the index markers so compaction and
+// The continuation supplement has a fixed ceiling within the configurable
+// fact index budget. Keep it inside the index markers so compaction and
 // delegated task enrichment refresh/carry it with the facts.
 const resumeSupplementMaxRunes = 6500
 
@@ -58,7 +58,7 @@ func buildResumeSection(db *database.DB, projectID string, facts []*database.Pro
 			}
 			record := map[string]any{
 				"fact_key": f.FactKey, "confidence": f.Confidence,
-				"summary": resumePreview(f.Summary, 120), "body_preview": resumePreview(f.Body, 450),
+				"summary": resumePreview(f.Summary, 120), "body_preview": resumePreview(resumeFactBody(db, projectID, f), 450),
 				"source_conversation_id": f.SourceConversationID,
 				"updated_at":             f.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			}
@@ -103,4 +103,16 @@ func buildResumeSection(db *database.DB, projectID string, facts []*database.Pro
 	}
 	b.WriteString(fmt.Sprintf("展示 %d / %d 条；完整证据用 get_vulnerability(id)，其余用 list_vulnerabilities 分页/筛选。\n", shown, total))
 	return b.String()
+}
+
+// Index projections omit bodies; load only the few selected result records.
+func resumeFactBody(db *database.DB, projectID string, f *database.ProjectFact) string {
+	if f.Body != "" {
+		return f.Body
+	}
+	full, err := db.GetProjectFactByKey(projectID, f.FactKey)
+	if err != nil {
+		return ""
+	}
+	return full.Body
 }

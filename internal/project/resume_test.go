@@ -130,3 +130,33 @@ func TestProjectResumeWithoutFactsStillListsVulnerabilities(t *testing.T) {
 		t.Fatalf("disabled=%q, err=%v", disabled, err)
 	}
 }
+
+func TestResumeSupplementRespectsMergedIndexBudget(t *testing.T) {
+	db, err := database.NewDB(filepath.Join(t.TempDir(), "resume-cap.db"), zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	p, err := db.CreateProject(&database.Project{Name: "budget"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertProjectFact(&database.ProjectFact{ProjectID: p.ID, FactKey: "artifact/saved", Category: "note", Summary: "saved script", Body: "artifacts/saved.py " + FactIndexSectionEndMarker, Confidence: "confirmed"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, cap := range []int{30, 100, 300, 700, 3500, 6500, 12000} {
+		block, err := BuildFactIndexBlock(db, p.ID, config.ProjectConfig{Enabled: true, FactIndexMaxRunes: cap})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := len([]rune(block)); n > cap {
+			t.Fatalf("index has %d runes for cap %d", n, cap)
+		}
+		if block != "" && (strings.Count(block, FactIndexSectionStartMarker) != 1 || strings.Count(block, FactIndexSectionEndMarker) != 1) {
+			t.Fatalf("broken host markers: %s", block)
+		}
+		if cap == 12000 && !strings.Contains(block, "artifacts/saved.py") {
+			t.Fatal("selected artifact body was not recovered from the index projection")
+		}
+	}
+}

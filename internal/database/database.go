@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	// WAL 允许并发读，但同一时间仍只有一个写者。连接池过大时，Deep 模式并行
-	// create_asset 会各自 Begin+SELECT 再 INSERT，触发 SQLITE_BUSY（database is locked）
-	// 且 DEFERRED 事务升级写锁时可能立刻失败、不走 busy_timeout。
+	// WAL permits concurrent readers but only one writer; keep the pool modest.
 	sqliteMaxOpenConns  = 8
 	sqliteMaxIdleConns  = 4
 	sqliteBusyTimeoutMS = 30000
@@ -29,37 +27,13 @@ const (
 )
 
 func sqliteOpenDSN(path string) string {
+	// Reserve the writer at Begin, before read-modify-write transactions take a
+	// snapshot. DEFERRED upgrades may fail immediately without busy_timeout.
+	// Let SQLite wait once; retrying after each timeout multiplies lock latency.
 	return fmt.Sprintf("%s?_journal_mode=WAL&_foreign_keys=1&_busy_timeout=%d&_synchronous=NORMAL&_txlock=immediate", path, sqliteBusyTimeoutMS)
 }
 
-func isSQLiteBusy(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "database is locked") || strings.Contains(msg, "sqlite_busy")
-}
-
-func retrySQLiteBusy(attempts int, op func() error) error {
-	if attempts < 1 {
-		attempts = 1
-	}
-	var err error
-	backoff := 5 * time.Millisecond
-	for i := 0; i < attempts; i++ {
-		err = op()
-		if err == nil || !isSQLiteBusy(err) {
-			return err
-		}
-		time.Sleep(backoff)
-		if backoff < 100*time.Millisecond {
-			backoff *= 2
-		}
-	}
-	return err
-}
-
-// configureDBPool 设置 SQLite 连接池：保留少量连接给 WAL 并发读，避免 25 路写连接互锁。
+// configureDBPool 设置 SQLite 连接池，保留少量连接给 WAL 并发读。
 func configureDBPool(db *sql.DB) {
 	db.SetMaxOpenConns(sqliteMaxOpenConns)
 	db.SetMaxIdleConns(sqliteMaxIdleConns)

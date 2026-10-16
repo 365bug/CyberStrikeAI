@@ -53,11 +53,16 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 	allEdges, _ := db.ListProjectFactEdgesByProject(projectID)
 	allEdges = FilterCheckpointEdges(allEdges, facts)
 	_, incomingByTarget := indexEdgeGroupMaps(allEdges)
+	resume := buildResumeSection(db, projectID, facts)
 
 	maxRunes := cfg.FactIndexMaxRunesEffective()
 	header := fmt.Sprintf("## 项目黑板索引（project: %s, id: %s）\n", indexField(proj.Name), proj.ID)
 	if len(facts) == 0 {
-		block := wrapFactIndexBlock(header + "（暂无事实）\n" + factIndexFooterEmpty)
+		content := header + "（暂无事实）\n" + factIndexFooterEmpty
+		if len([]rune(wrapFactIndexBlock(content+"\n\n"+resume))) <= maxRunes {
+			return wrapFactIndexBlock(content + "\n\n" + resume), nil
+		}
+		block := wrapFactIndexBlock(content)
 		if len([]rune(block)) <= maxRunes {
 			return block, nil
 		}
@@ -68,6 +73,11 @@ func BuildFactIndexBlock(db *database.DB, projectID string, cfg config.ProjectCo
 
 	pathMaxRunes := cfg.FactIndexPathMaxRunesEffective()
 	footer := factIndexFooterGetDetail + "\n" + factIndexFooterWriteHint
+	// Continuation data shares the host index cap. Reserve space for fact rows;
+	// tiny budgets retain tool retrieval guidance.
+	if len([]rune(resume)) <= maxRunes-len([]rune(wrapFactIndexBlock(header+footer)))-800 {
+		footer += "\n\n" + resume
+	}
 	// Include markers, separators and the worst-case omission notice in the cap.
 	omissionReserve := len([]rune(factIndexOmissionNotice(len(facts))))
 	framingRunes := len([]rune(wrapFactIndexBlock(header+footer))) + omissionReserve

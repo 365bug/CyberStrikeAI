@@ -584,6 +584,8 @@ roles_dir: roles # 角色配置文件目录（相对于配置文件所在目录�
 # ============================================
 project:
   enabled: true
+  # 压缩时自动保存续接摘要为 tentative note（每会话/代理更新一条，不替代已确认事实）
+  context_checkpoints: true
   # default_project_id: "" # 可选：机器人/批量任务创建对话时的默认项目 ID
   fact_index_max_runes: 65000
   # 事实关系速览段预算（从索引总预算中预留）

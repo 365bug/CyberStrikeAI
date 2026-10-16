@@ -23,3 +23,9 @@ REQ-003 / AC-003：返回的 region 可导入资产 province，兼容已有 prov
 沿用 POST /api/fofa/search。仅 FOFA 将返回字段别名 province 转成 region；去除重复字段，保持首次出现顺序；请求和响应 fields 使用同一规范化列表，因此结果映射不偏移。其他提供商字段不变。
 前端和 HTML 默认及预设使用 region；FOFA 情报预设的 as_number/as_organization 同属错误返回字段，改用官方 asn/org。工具说明同步更新。资产导入优先 region，再兼容 province、location.province_cn。
 兼容转换只针对返回字段，不修改查询表达式。参考 https://fofa.info/api。
+
+## F3 实施计划
+
+新增独立 Go 字段规范化辅助文件；handler 加调用点，修改默认值；前端配置、HTML 和工具说明定点替换；资产映射加 region。
+验证：Go 模拟服务检查真实 outbound fields 并返回按序行，覆盖默认、旧别名、重复和结果映射；Node 验证 FOFA 预设以及对象/数组资产导入，保留旧数据及 Quake 行为。执行现有 handler、前端相关测试和语法、diff 检查。
+回退：撤销本分支代码提交，无数据迁移。真实 API 查询会消耗外部账户额度，本次采用合同模拟验证，不使用真实凭据。

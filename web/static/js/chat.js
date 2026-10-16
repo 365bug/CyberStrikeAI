@@ -4945,6 +4945,7 @@ function normalizeAssistantTurnTokenUsage(data) {
         completionTokens: assistantTurnUsageNumber(source.completionTokens),
         totalTokens: assistantTurnUsageNumber(source.totalTokens),
         cachedTokens: assistantTurnUsageNumber(source.cachedTokens),
+        cacheWriteTokens: assistantTurnUsageNumber(source.cacheWriteTokens),
         reasoningTokens: assistantTurnUsageNumber(source.reasoningTokens),
         model: source.model != null ? String(source.model).trim() : ''
     };
@@ -4962,6 +4963,7 @@ function mergeAssistantTurnTokenUsage(target, usage) {
         completionTokens: 0,
         totalTokens: 0,
         cachedTokens: 0,
+        cacheWriteTokens: 0,
         reasoningTokens: 0,
         model: ''
     };
@@ -4970,6 +4972,7 @@ function mergeAssistantTurnTokenUsage(target, usage) {
     out.completionTokens += usage.completionTokens || 0;
     out.totalTokens += usage.totalTokens || 0;
     out.cachedTokens += usage.cachedTokens || 0;
+    out.cacheWriteTokens += usage.cacheWriteTokens || 0;
     out.reasoningTokens += usage.reasoningTokens || 0;
     if (!out.model && usage.model) out.model = usage.model;
     return out.totalTokens > 0 ? out : null;
@@ -4998,6 +5001,7 @@ function setAssistantTurnTokenUsage(messageElementOrId, usage) {
         delete messageElement.dataset.turnCompletionTokens;
         delete messageElement.dataset.turnTotalTokens;
         delete messageElement.dataset.turnCachedTokens;
+        delete messageElement.dataset.turnCacheWriteTokens;
         delete messageElement.dataset.turnReasoningTokens;
         delete messageElement.dataset.turnModel;
         syncAssistantTurnSummary(messageElement);
@@ -5008,6 +5012,7 @@ function setAssistantTurnTokenUsage(messageElementOrId, usage) {
     messageElement.dataset.turnCompletionTokens = String(normalized.completionTokens || 0);
     messageElement.dataset.turnTotalTokens = String(normalized.totalTokens || 0);
     messageElement.dataset.turnCachedTokens = String(normalized.cachedTokens || 0);
+    messageElement.dataset.turnCacheWriteTokens = String(normalized.cacheWriteTokens || 0);
     messageElement.dataset.turnReasoningTokens = String(normalized.reasoningTokens || 0);
     if (normalized.model) {
         messageElement.dataset.turnModel = normalized.model;
@@ -5025,6 +5030,7 @@ function getAssistantTurnTokenUsage(messageElement) {
         completionTokens: messageElement.dataset.turnCompletionTokens,
         totalTokens: messageElement.dataset.turnTotalTokens,
         cachedTokens: messageElement.dataset.turnCachedTokens,
+        cacheWriteTokens: messageElement.dataset.turnCacheWriteTokens,
         reasoningTokens: messageElement.dataset.turnReasoningTokens,
         model: messageElement.dataset.turnModel
     });
@@ -5051,6 +5057,7 @@ function formatAssistantTurnTokenUsageTitle(usage) {
         prompt: formatAssistantTurnTokenCount(safeUsage.promptTokens),
         completion: formatAssistantTurnTokenCount(safeUsage.completionTokens),
         cached: formatAssistantTurnTokenCount(safeUsage.cachedTokens),
+        cacheWrite: formatAssistantTurnTokenCount(safeUsage.cacheWriteTokens),
         reasoning: formatAssistantTurnTokenCount(safeUsage.reasoningTokens),
         calls: formatAssistantTurnTokenCount(safeUsage.modelCalls),
         model: safeUsage.model || ''

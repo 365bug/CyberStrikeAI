@@ -45,3 +45,8 @@ REQ-003 / AC-003：返回的 region 可导入资产 province，兼容已有 prov
 - `node --check web/static/js/info-collect.js`、`node --check web/static/js/assets.js`、`git diff --check`：通过。
 新增 Go 合同测试验证实际发往模拟上游的字段、按序返回值和最终 JSON 映射，覆盖默认、空白、旧表单、别名重复及规范字段；Node 测试执行实际配置和导入函数，覆盖 HTML 默认、所有 FOFA 字段预设、对象/数组结果及旧字段和 Quake 兼容。
 未调用真实 FOFA 账户、未执行浏览器人工查询或线上验证；这些不属于本次自动化验证结论。
+
+## F6 完成与合并准备
+
+代码提交：0c0d4a53；验证记录：945627e9。已核对修复 diff：兼容转换位于其他提供商分流之后，响应字段使用规范化后的同一列表，结果与字段对齐；内部资产模型和数据库无需迁移。CHANGELOG.md Unreleased/Fixed 已记录用户场景和兼容行为。
+分支 codex/fix-fofa-region 各阶段记录已提交并推送 origin；本阶段完成后同样推送。可供合并评审，未创建 PR、未合并 main、未发布或部署。线上生效须后续合并及部署。

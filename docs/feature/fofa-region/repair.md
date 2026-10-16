@@ -35,3 +35,13 @@ REQ-003 / AC-003：返回的 region 可导入资产 province，兼容已有 prov
 已修正后端、JS、HTML 默认和 FOFA 字段预设；独立 normalizeFofaFields 在 FOFA 分支转换 province、清理重复字段并保持请求/响应顺序。空白 fields 同空值使用默认值。旧表单可由后端兼容，无需清空浏览器存储；保留旧 FOFA 默认字段识别，避免其他提供商恢复表单时误用 FOFA 字段。
 资产导入读取 region，并兼容 province、location.province_cn；工具字段说明同步更新为 region/asn/org。
 已通过 FOFA 和其他提供商定向 Go handler 测试、16 项 Node 测试、JS 语法及 diff 检查。新增测试最初因 Node VM 提取函数的结束标记拼写错误失败，修正测试加载边界后通过；未掩盖运行错误。完整 handler 包测试另行记录于 F5。
+
+## F5 验证结果
+
+2026-10-16：
+- `go test ./internal/handler -run 'Test(Fofa|SafeFofa|.*SpaceSearch|.*ZoomEye|.*Quake|.*Shodan)' -count=1`：通过。
+- `go test ./internal/handler -count=1`：完整包通过（16.683s）。
+- `node --test web/static/js/fofa-fields.test.cjs web/static/js/asset-export-language.test.cjs web/static/js/asset-scan-prompt.test.cjs`：16/16 通过。
+- `node --check web/static/js/info-collect.js`、`node --check web/static/js/assets.js`、`git diff --check`：通过。
+新增 Go 合同测试验证实际发往模拟上游的字段、按序返回值和最终 JSON 映射，覆盖默认、空白、旧表单、别名重复及规范字段；Node 测试执行实际配置和导入函数，覆盖 HTML 默认、所有 FOFA 字段预设、对象/数组结果及旧字段和 Quake 兼容。
+未调用真实 FOFA 账户、未执行浏览器人工查询或线上验证；这些不属于本次自动化验证结论。
